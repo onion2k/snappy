@@ -1,0 +1,12 @@
+{
+  "src/arena.ts": 52,
+  "src/autopilot.ts": 169,
+  "src/frame-cost.ts": 14,
+  "src/game.ts": 12,
+  "src/invariants.ts": 34,
+  "src/physics.ts": 0,
+  "src/progress.ts": 25,
+  "src/random.ts": 1,
+  "src/sled.ts": 17,
+  "src/sound.ts": 0
+}
