@@ -6,14 +6,11 @@
  */
 import { createContext } from 'artshape-render/gpu/context';
 import { Orbit } from 'artshape-render/gpu/camera';
-import { bakeEnvironment } from 'artshape-render/render/env';
-import { LightPool } from 'artshape-render/game/lights';
 import { GameRenderer } from 'artshape-render/game/renderer';
-import { HOLE } from './arena';
 import { createApi } from './debug';
 import { frameCost } from './frame-cost';
-import { Game, type GameEvents } from './game';
-import { Input } from './input';
+import { Game } from './game';
+import { daylight } from './look';
 import { Progress } from './progress';
 import { seeded } from './random';
 import { ARENA_BOX, Scene } from './scene';
@@ -24,14 +21,10 @@ const MM_PER_UNIT = 100;
 const LIGHT_CAPACITY = 16,
   EFFECT_CAPACITY = 16,
   PARTICLE_CAPACITY = 1024;
-/** How many of the game's events the test API keeps, before the oldest go. */
-const EVENTS_KEPT = 500;
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const boot = document.getElementById('boot')!;
 const bootMsg = document.getElementById('bootMsg')!;
-const bankPanel = document.getElementById('bank')!;
-const bankText = bankPanel.querySelector('b')!;
 const stats = document.getElementById('stats')!;
 const help = document.getElementById('help')!;
 
@@ -46,36 +39,20 @@ async function main() {
   const ctx = await createContext(canvas);
   bootMsg.textContent = 'compiling shaders…';
   const renderer = new GameRenderer(ctx, LIGHT_CAPACITY, EFFECT_CAPACITY, PARTICLE_CAPACITY, MM_PER_UNIT);
-  renderer.look = {
-    ...renderer.look,
-    sunDir: [0.35, -0.3, 0.89],
-    sunColour: [1, 0.96, 0.9],
-    exposure: 1.1,
-    ambient: 0.6,
-    background: [0.04, 0.04, 0.05],
-  };
-  const env = bakeEnvironment(ctx, 'studio', { size: 128, mips: 6 });
-  renderer.setEnvironment(env.specular, env.brdf, env.mips);
+  await daylight(renderer, ctx);
   renderer.camera.fov = 40;
   renderer.camera.near = 2;
   renderer.camera.far = 500;
+  // the map is fitted to the box round the whole arena, as a small course's is in golf
   renderer.setSunShadow(ARENA_BOX);
 
   // ---- the game, and what it says has happened ----
 
   const query = new URLSearchParams(location.search);
   const progress = new Progress();
-  const input = new Input();
-  /** What has happened, a line each, for the test API. */
+  /** What has happened, a line each, for the test API: nothing is told yet. */
   const eventLog: string[] = [];
-  const log = (line: string) => {
-    eventLog.push(line);
-    if (eventLog.length > EVENTS_KEPT) eventLog.splice(0, eventLog.length - EVENTS_KEPT);
-  };
-  const showBank = () => {
-    bankText.textContent = String(progress.save.bank);
-  };
-  // ?seed=N makes chance the same from before the first ball drops, for a test that wants the same arena every run
+  // ?seed=N makes chance the same from before the game is built, for a test that wants the same game every run
   const seed = query.get('seed');
   // The context is not made at boot: it costs about a tenth of a second and is silent until a gesture anyway, so it
   // is made when the user first acts, and the boot gate measures the page without it. Until then the sound is a
@@ -87,27 +64,14 @@ async function main() {
     make: (options) =>
       new GameSound({
         context: new AudioContext(),
-        // The sound's chance is its own, one past the game's: the determinism check hashes game state, and a sound
-        // that drew from the game's source would move every ball the game drops. Seeded, a run's sound is repeatable.
+        // The sound's chance is its own, one past the game's: a sound that drew from the game's source would move
+        // everything the game does with chance. Seeded, a run's sound is repeatable.
         random: seed !== null ? seeded(+seed + 1) : undefined,
         ...options,
       }),
   });
-  const events: GameEvents = {
-    banked(_kind, x, y) {
-      log(`banked ${x.toFixed(1)},${y.toFixed(1)}`);
-      sound.banked();
-      log('sound bank');
-      showBank();
-    },
-    dropped(_kind, x, y) {
-      log(`dropped ${x.toFixed(1)},${y.toFixed(1)}`);
-      sound.dropped();
-      log('sound drop');
-    },
-  };
-  const game = new Game(progress, events, seed !== null ? { random: seeded(+seed) } : {});
-  const { world, sled } = game;
+  const game = new Game(progress, seed !== null ? { random: seeded(+seed) } : {});
+  const { world } = game;
 
   // a browser starts the context only on a gesture, so the first key or click makes it; until then a sound is silent
   const wake = () => sound.wake();
@@ -125,10 +89,6 @@ async function main() {
 
   const scene = new Scene();
   renderer.setStatic(scene.static(world.solid));
-  renderer.setDynamic(scene.dynamic());
-  const lights = new LightPool(LIGHT_CAPACITY);
-  lights.add({ position: [HOLE.x, HOLE.y, 14], radius: 40, colour: [1, 0.85, 0.6], intensity: 30 });
-  renderer.setLights(lights);
 
   const cam = renderer.camera;
   cam.target = [0, 0, 0];
@@ -159,12 +119,6 @@ async function main() {
   addEventListener('resize', resize);
   resize();
 
-  function upload() {
-    const balls = scene.write(world, sled);
-    renderer.move(0, scene.balls, balls);
-    renderer.move(1, scene.sled, 1);
-  }
-
   /** Whether a frame is being measured: the frame loop stands still while one is. */
   let measuring = false;
 
@@ -185,7 +139,6 @@ async function main() {
     try {
       return await frameCost(
         () => {
-          upload();
           return renderer.frame(view, 'redraw', 1 / 60);
         },
         () => ctx.device.queue.onSubmittedWorkDone(),
@@ -199,10 +152,8 @@ async function main() {
 
   await renderer.ready;
   boot.classList.add('gone');
-  bankPanel.hidden = false;
   stats.hidden = false;
   help.hidden = false;
-  showBank();
 
   // ---- each frame ----
 
@@ -210,18 +161,17 @@ async function main() {
   let smoothed = 0;
   function simulate(dt: number) {
     frames++;
-    game.step(dt, input.read());
+    game.step(dt);
     // after the game, so that a game that is not stepping has no music
     sound.step(dt);
   }
   function draw(dt: number) {
     orbit.update();
     cam.update();
-    upload();
     const t = performance.now();
     renderer.frame(ctx.context.getCurrentTexture().createView(), 'redraw', dt);
     smoothed += (performance.now() - t - smoothed) * 0.05;
-    if (frames % 30 === 0) stats.textContent = `${smoothed.toFixed(1)} ms · ${world.live} on the floor`;
+    if (frames % 30 === 0) stats.textContent = `${smoothed.toFixed(1)} ms`;
   }
 
   // ---- the test API, and the frame loop ----
@@ -243,9 +193,6 @@ async function main() {
     simulate,
     draw,
     frame: () => frames,
-    setDrive: (d) => {
-      input.override = d;
-    },
     look(x, y, view) {
       cam.target = [x, y, 0];
       orbit.setSpherical(view);

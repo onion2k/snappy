@@ -3,9 +3,9 @@
  * what it hands back. The package is replaced here by one that writes down
  * what it was asked, because a real Audio needs a browser's AudioContext and
  * the sound itself is the package's own to hold, and is heard in the smoke
- * tests. What is held is that the right sounds are loaded and played, that
- * the song is stepped by the game's time and nothing else, and that the
- * setting goes in and comes out unchanged.
+ * tests. What is held is that the song is made, that the song is stepped by
+ * the game's time and nothing else, and that the setting goes in and comes
+ * out unchanged.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -58,9 +58,9 @@ beforeEach(() => {
 });
 
 describe('the game sound', () => {
-  it('loads the bank and the drop, and a player on the calm song', () => {
+  it('loads no sound of its own yet, and a player on the calm song', () => {
     new GameSound({ context });
-    expect(asked.calls.filter((c) => c[0] === 'load').map((c) => c[1])).toEqual(['bank', 'drop']);
+    expect(asked.calls.filter((c) => c[0] === 'load')).toEqual([]);
     expect(asked.calls.filter((c) => c[0] === 'player')).toEqual([['player', 90]]);
   });
 
@@ -68,17 +68,6 @@ describe('the game sound', () => {
     const random = () => 0.5;
     new GameSound({ context, random, volume: 0.3, muted: true });
     expect(asked.calls[0]).toEqual(['audio', { context, random, volume: 0.3, muted: true }]);
-  });
-
-  it('plays the bank for a bank and the drop for a drop', () => {
-    const sound = new GameSound({ context });
-    asked.calls.length = 0;
-    sound.banked();
-    sound.dropped();
-    expect(asked.calls).toEqual([
-      ['play', 'bank'],
-      ['play', 'drop'],
-    ]);
   });
 
   it('steps the song by the time it is given, and reads its beat back', () => {
@@ -134,8 +123,6 @@ describe('the sound made on the first gesture', () => {
 
   it('is silent, and steps and plays nothing, before it is woken', () => {
     const { sound } = lazy();
-    sound.banked();
-    sound.dropped();
     sound.step(1 / 60);
     expect(asked.calls).toEqual([]);
     expect(sound.voices).toBe(0);
@@ -179,13 +166,9 @@ describe('the sound made on the first gesture', () => {
     const { sound } = lazy();
     sound.wake();
     asked.calls.length = 0;
-    sound.banked();
-    sound.dropped();
     sound.step(1 / 60);
     sound.mute(true);
     expect(asked.calls).toEqual([
-      ['play', 'bank'],
-      ['play', 'drop'],
       ['step', 1 / 60],
       ['mute', true],
     ]);

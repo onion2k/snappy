@@ -1,12 +1,11 @@
 /**
- * The game played through in a real browser: a ball put in front of the
- * sled, driven into the hole, banked, and another dropped. Played through
- * the test API with the game paused and stepped a frame at a time, so it is
- * the same every run and waits on no clock — but everything that follows,
- * the physics, the scene, the words on the screen, is the game's own.
+ * The game played through in a real browser: booted, stopped, and stepped a
+ * frame at a time through the test API, so it is the same every run and waits
+ * on no clock, while everything that follows, the physics, the scene and the
+ * music, is the game's own.
  *
- * A feature that a player can reach gets a stage here, and after every
- * stage the game's invariants are checked.
+ * A feature that a player can reach gets a stage here, and after every stage
+ * the game's invariants are checked.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { start, watch } from './game';
@@ -20,35 +19,15 @@ async function play(page: Page, frames: number, stage: string) {
   expect(broken, `invariants after ${stage}`).toEqual([]);
 }
 
-test('a ball pushed into the hole is banked, and another takes its place', async ({ page }, info) => {
+test('600 frames of the arena pass with the music playing and no rule broken', async ({ page }) => {
   const problems = watch(page);
   await start(page, { seed: 1, paused: true });
-  await play(page, 120, 'settling');
-  const { hole, balls } = await page.evaluate(() => window.game!.content());
-  // the sled south of the hole facing it, and a ball between the two
-  await page.evaluate(
-    ([x, y]) => {
-      const g = window.game!;
-      g.teleport(x, y - 22, Math.PI / 2);
-      g.place(g.bodies()[0].slot, x, y - 14, 1);
-      g.events();
-      g.drive(1, 0);
-    },
-    [hole.x, hole.y],
-  );
-  let banked = 0;
-  for (let f = 0; f < 600 && !banked; f += 10) {
-    await play(page, 10, 'driving at the hole');
-    banked = await page.evaluate(() => window.game!.state().banked);
-  }
-  await page.evaluate(() => window.game!.release());
-  expect(banked, 'a ball banked').toBeGreaterThanOrEqual(1);
-  const events = await page.evaluate(() => window.game!.events());
-  expect(events.some((e) => e.startsWith('banked'))).toBe(true);
-  expect(events.some((e) => e.startsWith('dropped'))).toBe(true);
-  await play(page, 120, 'the new ball landing');
-  expect(await page.evaluate(() => window.game!.state().live), 'the floor keeps its balls').toBe(balls);
-  await expect(page.locator('#bank b')).toHaveText(String(banked));
-  await info.attach('banked', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.evaluate(() => window.game!.wake());
+  await play(page, 600, 'ten seconds');
+  const { t } = await page.evaluate(() => window.game!.state());
+  expect(t, 'ten seconds of game time').toBeCloseTo(10, 6);
+  const sound = await page.evaluate(() => window.game!.sound());
+  expect(sound.beat, 'the music has played, on game time: 90 beats a minute').toBeCloseTo(15, 6);
+  expect(sound.voices, 'the music is sounding').toBeGreaterThanOrEqual(1);
   expect(problems).toEqual([]);
 });

@@ -1,5 +1,5 @@
 {
-  "bootMs": 145,
-  "frameMs": 0.179,
-  "bundleBytes": 80848
+  "bootMs": 119,
+  "frameMs": 0.656,
+  "bundleBytes": 113256
 }

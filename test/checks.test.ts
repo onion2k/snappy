@@ -16,7 +16,13 @@ describe('the checks', () => {
 
   it("lint this checkout, and not another session's worktree under it", async () => {
     const lint = new ESLint();
-    for (const file of ['src/game.ts', 'scripts/bench.ts', 'test/game.test.ts', 'smoke/game.ts', 'vite.config.ts'])
+    for (const file of [
+      'src/game.ts',
+      'scripts/mutation-check.ts',
+      'test/game.test.ts',
+      'smoke/game.ts',
+      'vite.config.ts',
+    ])
       expect(await lint.isPathIgnored(`.claude/worktrees/another/${file}`), file).toBe(true);
     // the game itself is still linted: a config that ignored everything would have passed the lines above
     expect(await lint.isPathIgnored('src/game.ts')).toBe(false);

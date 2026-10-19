@@ -1,9 +1,9 @@
 /**
  * The sound is a package of its own, artshape-sound, which knows nothing of
- * balls or arenas: a patch is a handful of numbers, a song is a tempo and a
+ * arenas: a patch is a handful of numbers, a song is a tempo and a
  * pattern, and what the game hears is whichever it asks for by name. This is
- * the game's side of it: the two sounds the game makes and the music under
- * them. Everything in the game that makes a noise goes through here, so the
+ * the game's side of it: the music, for now, and the place a sound the game
+ * makes will be loaded. Everything in the game that makes a noise goes through here, so the
  * package stays behind one door, and a change it needs goes in its own repo
  * with a version bump here. It knows nothing of the page: the context, the
  * first gesture and the key are main.ts's.
@@ -15,7 +15,6 @@
  * boot gate would measure the page with a cost the player never waits on.
  */
 import { Audio } from 'artshape-sound/audio';
-import { bank, drop } from 'artshape-sound/patches';
 import { Player } from 'artshape-sound/player';
 import { calm } from 'artshape-sound/songs';
 
@@ -34,17 +33,7 @@ export class GameSound {
 
   constructor({ context, random, volume, muted }: SoundOptions) {
     this.audio = new Audio({ context, random, volume, muted });
-    this.audio.load('bank', bank);
-    this.audio.load('drop', drop);
     this.music = new Player(this.audio, calm);
-  }
-
-  banked() {
-    this.audio.play('bank');
-  }
-
-  dropped() {
-    this.audio.play('drop');
   }
 
   /** The music on by `dt` seconds of game time: a game that is not stepping has no music. */
@@ -115,14 +104,6 @@ export class LazySound {
     if (this.sound) return;
     this.sound = this.make({ volume: this.volumeSetting, muted: this.muteSetting });
     void this.sound.resume();
-  }
-
-  banked() {
-    this.sound?.banked();
-  }
-
-  dropped() {
-    this.sound?.dropped();
   }
 
   step(dt: number) {

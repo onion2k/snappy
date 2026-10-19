@@ -16,13 +16,17 @@ const DIR = new URL('saves/', import.meta.url);
 const files = readdirSync(DIR)
   .filter((f) => f.endsWith('.json'))
   .sort();
-const FRESH = { bank: 0, banked: 0, muted: false, volume: 1 };
+const FRESH = { muted: false, volume: 1 };
 const read = (file: string) => readFileSync(new URL(file, DIR), 'utf8');
 
-/** What each save was worth when it was written, and what loading it must keep. */
+/**
+ * What each save was worth when it was written, and what loading it must keep. The first two were written when the
+ * game had a bank, and carry its fields: they are ignored now, and the mute and volume are kept.
+ */
 const KEPT: Record<string, Record<string, unknown>> = {
-  '01-first.json': { bank: 7, banked: 7, muted: false, volume: 1 },
-  '02-sound.json': { bank: 12, banked: 15, muted: true, volume: 0.4 },
+  '01-first.json': { muted: false, volume: 1 },
+  '02-sound.json': { muted: true, volume: 0.4 },
+  '03-look.json': { muted: true, volume: 0.6 },
 };
 
 describe('saves from every shape the game has written', () => {
@@ -32,15 +36,15 @@ describe('saves from every shape the game has written', () => {
 
   for (const file of files) {
     describe(file, () => {
-      it('loads with what it banked kept', () => {
+      it('loads with its mute and volume kept, and nothing else', () => {
         const save = new Progress(memoryStore(read(file))).save;
         for (const [key, was] of Object.entries(KEPT[file])) expect(save[key as keyof typeof save]).toEqual(was);
-        expect(Number.isFinite(save.bank) && save.bank >= 0).toBe(true);
+        expect(Object.keys(save).sort()).toEqual(['muted', 'volume']);
       });
 
       it('plays on from where it left off, and breaks no rule', () => {
-        const game = new Game(new Progress(memoryStore(read(file))), {}, { random: seeded(7) });
-        for (let f = 0; f < 300; f++) game.step(1 / 60, { throttle: 1, steer: 0.3 });
+        const game = new Game(new Progress(memoryStore(read(file))), { random: seeded(7) });
+        for (let f = 0; f < 300; f++) game.step(1 / 60);
         expect(checkInvariants(game)).toEqual([]);
       });
 
@@ -57,9 +61,18 @@ describe('saves from every shape the game has written', () => {
   }
 
   it('takes defaults for what an old save lacks, and shrugs at what it cannot read', () => {
-    expect(new Progress(memoryStore('{"bank": 3}')).save).toEqual({ ...FRESH, bank: 3 });
+    expect(new Progress(memoryStore('{}')).save).toEqual(FRESH);
     expect(new Progress(memoryStore('not json')).save).toEqual(FRESH);
-    expect(new Progress(memoryStore('{"bank": "lots"}')).save).toEqual(FRESH);
+    expect(new Progress(memoryStore('[1]')).save).toEqual(FRESH);
+    expect(new Progress(memoryStore('null')).save).toEqual(FRESH);
+  });
+
+  it('ignores the bank an old save carries, and keeps its mute and volume', () => {
+    const old = '{"bank": 12, "banked": 15, "muted": true, "volume": 0.4}';
+    const progress = new Progress(memoryStore(old));
+    expect(progress.save).toEqual({ muted: true, volume: 0.4 });
+    expect('bank' in progress.save).toBe(false);
+    expect('banked' in progress.save).toBe(false);
   });
 
   it('takes sound as saved only when it is a boolean and a volume from 0 to 1', () => {
@@ -72,7 +85,7 @@ describe('saves from every shape the game has written', () => {
     expect(sound('{"muted": "true"}'), 'a string is not a boolean').toEqual({ muted: false, volume: 1 });
     expect(sound('{"muted": 1}'), 'a number is not a boolean').toEqual({ muted: false, volume: 1 });
     expect(sound('{"muted": null, "volume": null}')).toEqual({ muted: false, volume: 1 });
-    expect(sound('{"bank": 2}'), 'missing').toEqual({ muted: false, volume: 1 });
+    expect(sound('{"other": 2}'), 'missing').toEqual({ muted: false, volume: 1 });
     for (const v of ['1.5', '-0.1', '"loud"', '1e999', 'null'])
       expect(sound(`{"muted": true, "volume": ${v}}`), `volume ${v}`).toEqual({ muted: true, volume: 1 });
   });

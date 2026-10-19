@@ -1,12 +1,10 @@
 /**
- * What the player has done, and where it is kept: the bank, in the
+ * What the player has set, and where it is kept: the sound, in the
  * browser's storage or, for the game run without a page, anywhere. Old
  * saves must still load: a field a save does not have takes its default,
  * and a field it has that the game no longer knows is left alone.
  */
 export interface Save {
-  bank: number;
-  banked: number;
   /** Whether the player has turned the sound off. */
   muted: boolean;
   /** The master volume, from 0 to 1. */
@@ -65,7 +63,7 @@ export function memoryStore(json: string | null = null): SaveStore & { json: str
   };
 }
 
-const fresh = (): Save => ({ bank: 0, banked: 0, muted: false, volume: 1 });
+const fresh = (): Save => ({ muted: false, volume: 1 });
 
 /** A number from a save, or the default where it is missing or not a number. */
 function number(from: Record<string, unknown>, key: string, or: number): number {
@@ -102,19 +100,8 @@ export class Progress {
     if (typeof raw !== 'object' || raw === null) return;
     const from = raw as Record<string, unknown>;
     const d = fresh();
-    this.save.bank = number(from, 'bank', d.bank);
-    this.save.banked = number(from, 'banked', d.banked);
     this.save.muted = boolean(from, 'muted', d.muted);
     this.save.volume = unit(from, 'volume', d.volume);
-  }
-
-  get bank() {
-    return this.save.bank;
-  }
-
-  deposit(value: number) {
-    this.save.bank += value;
-    this.save.banked += value;
   }
 
   /** The sound turned off or on, and the save written at once, since nothing else will write it. */
