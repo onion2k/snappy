@@ -37,15 +37,13 @@ const LOOK_SCENES: [string, keyof typeof GAME_VIEWS][] = [
 
 /**
  * How far the pictures may differ before it is a change and not the GPU: not a pixel whose colour is off by more
- * than 0.02, Playwright's own measure of a colour's difference, past 24 of them. The stub's arena matched its picture
- * to the pixel. The world does not quite: artshape-render's grass gathers its blades on the GPU in no fixed order, so
- * where blades overlap at one depth a few pixels flip between frames. Drawn on five pages just booted, each scene moved
- * at most 9 pixels, by up to 13 levels a channel, and the look builder saw 12 at most over many more (`/gate-moved`,
- * 2026-10-20); the village, the rover and the far view, with little grass near, moved none. Twice the worst seen is
- * allowed, and no more: a button over the picture is about 700 pixels. When the renderer draws its grass in a fixed
- * order this goes back to nought.
+ * than 0.02, Playwright's own measure of a colour's difference. The world matches its pictures to the pixel: drawn on
+ * five pages just booted, no scene moved a pixel (`/gate-moved`, 2026-10-20). It did not before artshape-render
+ * 0.46.0, whose grass was listed as the GPU finished it, so up to twelve pixels of a field flickered and this allowed
+ * 24; the grass is in an order of its own now, and nothing is forgiven. A button over the picture is about 700
+ * pixels, and the gate's own check below holds that one is seen.
  */
-const TOLERANCE = { maxDiffPixels: 24, threshold: 0.02 };
+const TOLERANCE = { maxDiffPixels: 0, threshold: 0.02 };
 
 /** The corner that counts the milliseconds a frame takes is different every run, and says nothing about the look. */
 async function hideStats(page: Page) {
