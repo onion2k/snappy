@@ -167,13 +167,19 @@ export class SightLine {
     f[6] = Math.sin(pitch);
   }
 
-  /** Whether `p` stands in the way: false for anything not tall enough to. */
-  blocks(p: Placement): boolean {
-    return this.inLine(p) || this.inFront(p);
+  /**
+   * Whether `p` stands in the way: false for anything not tall enough to. `slack` widens the way by that many units
+   * all round: asked of what is already cut away with `HOLD`, so a thing at the edge of the way is cut once and grows
+   * back once it is clearly out of it, and does not flick between the two as the rover and the camera move a hair. It
+   * did, a tree going back within a fifth of a second some forty times in twenty seconds of driving through a wood.
+   * A whole number, so it is not boxed handed in.
+   */
+  blocks(p: Placement, slack = 0): boolean {
+    return this.inLine(p, slack) || this.inFront(p, slack);
   }
 
-  /** Whether `p` stands in the line from the eye to what it looks at. */
-  inLine(p: Placement): boolean {
+  /** Whether `p` stands in the line from the eye to what it looks at, the line widened by `slack`. */
+  inLine(p: Placement, slack = 0): boolean {
     const h = tallness(p.kind) * p.scale;
     if (h <= 0) return false;
     const ex = this.eye[0],
@@ -198,7 +204,7 @@ export class SightLine {
       let t0 = 0,
         t1 = 1;
       for (let k = 0; k < 4; k++) {
-        const half = (k < 2 ? b.hx : b.hy) * p.scale + MARGIN;
+        const half = (k < 2 ? b.hx : b.hy) * p.scale + MARGIN + slack;
         const q = k === 0 ? -ux : k === 1 ? ux : k === 2 ? -uy : uy;
         const w = k === 0 ? lx + half : k === 1 ? half - lx : k === 2 ? ly + half : half - ly;
         if (q === 0) {
@@ -209,25 +215,28 @@ export class SightLine {
       }
       const low = Math.min(ez + vz * t0, ez + vz * t1),
         high = Math.max(ez + vz * t0, ez + vz * t1);
-      return low < p.z + h + MARGIN && high > p.z - MARGIN;
+      return low < p.z + h + MARGIN + slack && high > p.z - MARGIN - slack;
     }
     // the nearest the line comes to the thing's middle, seen from above, and how high it is there
     let t = across > 0 ? ((p.x - ex) * vx + (p.y - ey) * vy) / across : 0;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
     const dx = p.x - ex - vx * t,
       dy = p.y - ey - vy * t;
-    const reach = reachOf(p.kind) * p.scale + MARGIN;
+    const reach = reachOf(p.kind) * p.scale + MARGIN + slack;
     if (dx * dx + dy * dy > reach * reach) return false;
     const z = ez + vz * t;
-    return z < p.z + h + MARGIN && z > p.z - MARGIN;
+    return z < p.z + h + MARGIN + slack && z > p.z - MARGIN - slack;
   }
 
-  /** Whether `p` stands near the eye and inside the foot of the picture, where it would hide what is behind it. */
-  inFront(p: Placement): boolean {
+  /**
+   * Whether `p` stands near the eye and inside the foot of the picture, where it would hide what is behind it; its
+   * reach widened by `slack`, and the height it must loom by lowered by as much.
+   */
+  inFront(p: Placement, slack = 0): boolean {
     const h = tallness(p.kind) * p.scale;
     if (h <= 0) return false;
     const f = this.frame;
-    const r = reachOf(p.kind) * p.scale;
+    const r = reachOf(p.kind) * p.scale + slack;
     const dx = p.x - this.eye[0],
       dy = p.y - this.eye[1];
     const along = dx * f[0] + dy * f[1],
@@ -240,11 +249,11 @@ export class SightLine {
     if (side > depth * f[3] + r) return false;
     // and big in the picture: as tall as `LOOM` of its depth into it, so a short tree or a well's roof in the foot is
     // left standing, and only what looms over the foot is taken
-    if (h < depth * LOOM) return false;
+    if (h + slack < depth * LOOM) return false;
     // its top over the ray along the picture's bottom edge somewhere: at its far side, where the ray has fallen
     // furthest, so a tree whose foot is past where the ray meets the ground is in the picture however short it is
     const far = Math.max(0, along + r);
-    return p.z + h > this.eye[2] - far * Math.tan(f[4]);
+    return p.z + h + slack > this.eye[2] - far * Math.tan(f[4]);
   }
 }
 
@@ -255,6 +264,8 @@ const LENS = new Float64Array([40, 1.6]);
 export const CROWN = 0.32;
 /** How much room is left round a crown, in units: a little, so a tree just clear of the line is left standing. */
 export const MARGIN = 2;
+/** How much further, in units, a thing already cut away must be clear of the way before it grows back. */
+export const HOLD = 4;
 /** How far toward what the camera looks at the foreground is cut away, as a share of the way. */
 export const NEAR_SHARE = 0.6;
 /**

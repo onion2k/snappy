@@ -12,7 +12,7 @@
   "src/rover.ts": 206,
   "src/sound.ts": 0,
   "src/tracks.ts": 8,
-  "src/view.ts": 145,
+  "src/view.ts": 133,
   "src/world/drive.ts": 10,
   "src/world/ground.ts": 34
 }

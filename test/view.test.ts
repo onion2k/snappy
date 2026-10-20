@@ -8,6 +8,7 @@ import {
   RINGS,
   RUNG,
   RUNG_STEPS,
+  HOLD,
   SightLine,
   WORK,
   frameWork,
@@ -135,6 +136,48 @@ describe('the trees in the way', () => {
       expect(tallness(kind)).toBe(0);
       expect(sight.blocks(tree(-20, 0, kind))).toBe(false);
     }
+  });
+
+  it('widens the way by its slack, so what is cut stays cut until it is clearly out of it', () => {
+    // walked out sideways from the line until a thing is just clear of it, then asked again with the slack
+    for (const [x, kind] of [
+      [-20, 'broadleaf'],
+      [-30, 'cottage'],
+      [-45, 'conifer'],
+    ] as const) {
+      let y = 0;
+      while (sight.blocks(tree(x, y, kind))) y += 0.25;
+      expect(y, `${kind} at ${x} is in the way on the line`).toBeGreaterThan(0);
+      expect(sight.blocks(tree(x, y, kind), HOLD), `${kind} just clear, with the slack`).toBe(true);
+      expect(sight.blocks(tree(x, y + HOLD + 1, kind), HOLD), `${kind} clear by more than the slack`).toBe(false);
+    }
+    expect(HOLD).toBeGreaterThan(0);
+  });
+
+  it('widens a building’s footprint and a crown’s height by its slack, out of the foot of the picture', () => {
+    // a cottage near the rover, past the part of the view whose buildings are cut for standing in front, so only its
+    // own footprint against the line decides it
+    let y = 0;
+    while (sight.blocks(tree(-10, y, 'cottage'))) y += 0.25;
+    expect(y).toBeGreaterThan(0);
+    expect(sight.inFront(tree(-10, y, 'cottage'), HOLD)).toBe(false);
+    expect(sight.inLine(tree(-10, y, 'cottage'), HOLD)).toBe(true);
+    expect(sight.inLine(tree(-10, y + HOLD + 1, 'cottage'), HOLD)).toBe(false);
+    // a tree on the line near the rover, grown until its top reaches the line, and the size before taken with the slack
+    let scale = 0.02;
+    while (!sight.inLine(tree(-10, 0, 'broadleaf', scale))) scale += 0.005;
+    const short = tree(-10, 0, 'broadleaf', scale - 0.005);
+    expect(sight.inLine(short)).toBe(false);
+    expect(sight.inLine(short, HOLD)).toBe(true);
+  });
+
+  it('widens the foot of the picture by its slack too', () => {
+    // a crown just outside the foot, off the line, taken in with the slack and not without
+    let y = 25;
+    while (sight.inFront(tree(-45, y))) y += 0.25;
+    expect(sight.inLine(tree(-45, y))).toBe(false);
+    expect(sight.inFront(tree(-45, y), HOLD)).toBe(true);
+    expect(sight.inFront(tree(-45, y + 40), HOLD)).toBe(false);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it is asked', () => {

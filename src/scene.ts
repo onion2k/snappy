@@ -53,7 +53,7 @@ import {
 import { waterGroups, waterMeshes } from './models/water';
 import { ROVER, type Rover } from './rover';
 import { TRACKS, type Tracks } from './tracks';
-import { ChunkView, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
+import { ChunkView, HOLD, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
 import { BIOME, BUILT, KINDS, SURFACE, type Ground, type Kind, type Placement, type WorldMap } from './world/types';
 
 /** The calls of the renderer the scene draws through. */
@@ -87,8 +87,14 @@ const MARK = { long: 0.75, wide: 0.55, lift: 0.12, dark: 0.45, fade: 45, every: 
 /** The tracks' pool, as the tracks keep it: one group of marks with room for every one. */
 const TRACKS_ROOM = TRACKS.capacity;
 
-/** How quickly what is cut out of the camera's way goes and comes back, as the share of the way it goes in a second. */
+/** How quickly what is cut out of the camera's way goes, and what is pressed down goes and comes back. */
 const SHRINK_RATE = 7;
+/**
+ * How quickly what was cut away grows back once it is out of the way: about half a second to its halfway swap, where
+ * the cut takes a tenth. The way to the rover moves for a moment as the camera rises over a lip or swings, and a wood
+ * cleared for six frames grew back whole and was cut again: trees seen flickering.
+ */
+const GROW_RATE = 1.2;
 
 /**
  * How low a building is cut when it stands in the camera's way, in units: its walls' feet, a little over the rover's
@@ -205,6 +211,12 @@ class Tracked {
     this.down[this.count] = 0;
     this.count++;
   }
+  /** How many are drawn as their low variant now, as a player sees them. */
+  get low(): number {
+    let n = 0;
+    for (let t = 0; t < this.count; t++) n += this.down[t];
+    return n;
+  }
   /** How many are not drawn whole now. */
   get cut(): number {
     let n = 0;
@@ -269,6 +281,8 @@ export class Scene {
   readonly lens = new Float64Array([40, 1.6]);
   /** The rover's body, which the sight line runs to: written each frame. */
   private readonly aim = new Float64Array(3);
+  /** This frame's ease toward cut and toward grown back, by what is wanted: nought cut, one whole. */
+  private readonly eases = new Float64Array(2);
 
   /** The scenery's pools: the tall trees drawn whole, everything else drawn whole, the far trees, and what is built. */
   private readonly trees: KitBatch;
@@ -301,6 +315,15 @@ export class Scene {
   private readonly chunkOrder: Int32Array;
   /** The trees drawn whole, the bushes, and the tall buildings: each can be cut out of the camera's or the rover's way. */
   private readonly treesCut: Tracked;
+  /**
+   * How far each placement was cut or pressed when the pools were last filled, by placement, nought to one, and which
+   * placements those were: so a refill draws what was cut away as it was, and a tree in the camera's way does not pop
+   * back whole for the frames its cut takes to ease in again. It did, at every chunk crossing, and was seen as trees
+   * flickering behind the rover. Sized once; only the entries written are put back to one.
+   */
+  private readonly kept: Float64Array;
+  private readonly keptOf: Int32Array;
+  private keptCount = 0;
   private readonly bushes: Tracked;
   private readonly housesCut: Tracked;
   /** The windmills, by index into the placements, and their sails' groups and matrices. */
@@ -388,6 +411,8 @@ export class Scene {
     let under = 0;
     for (const k of UNDERFOOT) under += whole.get(k) ?? 0;
     this.bushes = new Tracked(under);
+    this.kept = new Float64Array(map.placements.length).fill(1);
+    this.keptOf = new Int32Array(Math.max(1, most + under));
     let tallBuilt = 0;
     for (const p of map.placements) if (BUILT.has(p.kind) && tallness(p.kind) > 0) tallBuilt++;
     this.housesCut = new Tracked(tallBuilt);
@@ -597,6 +622,8 @@ export class Scene {
   /** The scenery's pools filled again for the chunks `view` says, and handed to the renderer. */
   private refill() {
     const { trees, kit, far, map } = this;
+    this.remember(this.treesCut);
+    this.remember(this.bushes);
     trees.clear();
     this.treesLow.clear();
     kit.clear();
@@ -629,10 +656,53 @@ export class Scene {
         } else if (draw === KIT.whole && kit.add(p) && UNDERFOOT.has(p.kind)) this.bushes.add(i, kit.lastIndex);
       }
     }
+    this.restoreTrees();
+    this.restoreBushes();
+    for (let k = 0; k < this.keptCount; k++) this.kept[this.keptOf[k]] = 1;
+    this.keptCount = 0;
     this.handOver(trees, this.base.trees, true);
     this.handOver(this.treesLow, this.base.treesLow, true);
     this.handOver(kit, this.base.kit, true);
     this.handOver(far, this.base.far, true);
+  }
+
+  /** What of `tracked` is cut or pressed, kept by placement for the refill to put back. */
+  private remember(tracked: Tracked) {
+    for (let t = 0; t < tracked.count; t++) {
+      if (tracked.size[t] >= 1 || this.keptCount >= this.keptOf.length) continue;
+      this.kept[tracked.of[t]] = tracked.size[t];
+      this.keptOf[this.keptCount++] = tracked.of[t];
+    }
+  }
+
+  /** The trees refilled drawn as they were: cut ones swapped for their low variant at once, and eased on from there. */
+  private restoreTrees() {
+    const tracked = this.treesCut;
+    for (let t = 0; t < tracked.count; t++) {
+      const size = this.kept[tracked.of[t]];
+      if (size >= 1) continue;
+      tracked.size[t] = size;
+      if (size >= 0.5) continue;
+      const p = this.map.placements[tracked.of[t]];
+      tracked.down[t] = 1;
+      this.trees.shrink[0] = 0;
+      this.trees.resize(p, tracked.at[t]);
+      this.trees.shrink[0] = 1;
+      this.treesLow.resize(p, tracked.lowAt[t]);
+    }
+  }
+
+  /** The bushes refilled pressed as far as they were under the rover. */
+  private restoreBushes() {
+    const b = this.bushes;
+    for (let t = 0; t < b.count; t++) {
+      const size = this.kept[b.of[t]];
+      if (size >= 1) continue;
+      b.size[t] = size;
+      this.kit.shrink[1] = CUT.bush + (1 - CUT.bush) * size;
+      this.kit.resize(this.map.placements[b.of[t]], b.at[t]);
+      this.kit.shrink[1] = 1;
+    }
   }
 
   /** A pool's groups written to the renderer: every one, or only those written since. */
@@ -697,8 +767,10 @@ export class Scene {
     aim[2] = game.rover.z + AIM_HEIGHT;
     this.sight.set(eye, aim, this.lens);
     const ease = 1 - Math.exp(-SHRINK_RATE * Math.max(0, dt));
-    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, ease);
-    this.cutAway(this.housesCut, this.built, this.builtLow, dt, ease);
+    this.eases[0] = ease;
+    this.eases[1] = 1 - Math.exp(-GROW_RATE * Math.max(0, dt));
+    this.cutAway(this.treesCut, this.trees, this.treesLow, dt);
+    this.cutAway(this.housesCut, this.built, this.builtLow, dt);
     this.pressBushes(game.rover, dt, ease);
     this.handOver(this.trees, this.base.trees, false);
     this.handOver(this.treesLow, this.base.treesLow, false);
@@ -717,13 +789,15 @@ export class Scene {
    * thing that grazes the line does not flicker, and nothing is ever drawn squashed. A step of nought (a paused frame)
    * settles it at once.
    */
-  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number, ease: number) {
+  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number) {
     for (let t = 0; t < tracked.count; t++) {
       const p = this.map.placements[tracked.of[t]];
-      const want = this.sight.blocks(p) ? 0 : 1;
+      // what is cut down stays cut until it is clearly out of the way, and what stands is cut once it is in it
+      const want = this.sight.blocks(p, tracked.down[t] ? HOLD : 0) ? 0 : 1;
       const was = tracked.size[t];
       if (was === want) continue;
-      let now = dt > 0 ? was + (want - was) * ease : want;
+      // cut at once, grown back slowly (GROW_RATE), the frame's two eases read from an array so neither is boxed
+      let now = dt > 0 ? was + (want - was) * this.eases[want] : want;
       if (Math.abs(now - want) < 0.02) now = want;
       tracked.size[t] = now;
       const down = now < 0.5 ? 1 : 0;
@@ -945,9 +1019,20 @@ export class Scene {
     this.refill();
   }
 
-  /** How many of the trees drawn whole are cut out of the camera's way now: for a test. */
+  /** How many of the trees near enough to be drawn whole are drawn cut down now, out of the camera's way: for a test. */
   get hidden(): number {
-    return this.treesCut.cut;
+    return this.treesCut.low;
+  }
+
+  /**
+   * Which trees are drawn cut down now, by placement, written into `out` (as many as fit); how many there are. For a
+   * test, which follows each tree from frame to frame.
+   */
+  cutTrees(out: Int32Array): number {
+    const t = this.treesCut;
+    let n = 0;
+    for (let k = 0; k < t.count && n < out.length; k++) if (t.down[k]) out[n++] = t.of[k];
+    return n;
   }
 
   /** How many buildings are cut down out of the camera's way now, and how many bushes are pressed: for a test. */
