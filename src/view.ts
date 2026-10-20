@@ -310,8 +310,8 @@ export class FrameRung {
   }
 }
 
-/** The scene's work a frame can do, as bits: the ground handed over, the scenery's pools filled, ground made ahead. */
-export const WORK = { ground: 1, refill: 2, ahead: 4 } as const;
+/** The scene's work a frame can do, as bits: the ground's levels switched, and the scenery's pools filled. */
+export const WORK = { ground: 1, refill: 2 } as const;
 
 /**
  * What the scene does in a frame, from whether its target has `crossed` into another chunk, whether a crossing's
@@ -320,10 +320,10 @@ export const WORK = { ground: 1, refill: 2, ahead: 4 } as const;
  * spread over two frames, the ground in the one that crosses and the pools in the next, so neither frame takes both
  * (review 3, 3); a settled frame does it all at once, so its picture is never one frame behind (the final pass's bug:
  * a step's picture showed the old pools, the next frame's the new, and a still scene was never twice the same). A
- * frame with neither makes ground ahead of need, which is only kept, and changes nothing drawn.
+ * frame with neither does none of it.
  */
 export function frameWork(crossed: boolean, due: boolean, settled: boolean): number {
   if (crossed) return settled ? WORK.ground | WORK.refill : WORK.ground;
   if (due) return WORK.refill;
-  return WORK.ahead;
+  return 0;
 }

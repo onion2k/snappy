@@ -266,6 +266,11 @@ Said so that a green `npm run check` is not read as more than it holds.
   at 1280×800. The rungs a slower machine steps down to (`FrameRung`) have
   unit tests and no picture or gate; `look` has one viewport and no
   phone-width picture.
+- **Memory.** Nothing holds what the game keeps on the GPU. Every chunk's
+  ground at every level is built at boot and switched by count, so a chunk
+  crossing uploads nothing (2026-10-20: the driven run's worst frame 7.7 to
+  about 3.2 ms, boot about 200 ms longer); that is some 2.4 million
+  vertices, on the order of 70 MB, which a phone may not have.
 - **Moving pictures.** `look` is still scenes; motion is seen by a person.
 - **The world's generator and the mesh builders, by mutation.** `mutate`
   leaves out `src/world/` (but for the drive rule and the ground) and

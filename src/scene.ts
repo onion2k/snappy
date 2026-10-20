@@ -10,9 +10,10 @@
  * the camera looks (how finely each chunk of ground is meshed, and which
  * scenery is drawn whole, which as far trees and which not at all) is
  * chosen by `ChunkView` and changes only when the camera's target crosses
- * into another chunk: then the ground is handed over again from meshes made
- * a frame at a time before they were wanted, and the scenery's pools
- * refilled, into groups whose room was fixed at boot. Each frame the rover
+ * into another chunk: then each chunk's ground is switched to its level
+ * (every chunk's every level was made and handed over at boot, so nothing is
+ * uploaded), and the scenery's pools refilled, into groups whose room was
+ * fixed at boot. Each frame the rover
  * is posed, the clouds placed and the sails turned by game time, the tracks
  * laid and now and then faded, the grass pressed under the wheels, the sun's
  * shadow fitted to the view, a bush the rover is in pressed down, and what
@@ -52,23 +53,13 @@ import {
 import { waterGroups, waterMeshes } from './models/water';
 import { ROVER, type Rover } from './rover';
 import { TRACKS, type Tracks } from './tracks';
-import { ChunkView, GROUND, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
-import {
-  BIOME,
-  BUILT,
-  CHUNK as CHUNK_SIDE,
-  KINDS,
-  SURFACE,
-  type Ground,
-  type Kind,
-  type Placement,
-  type WorldMap,
-} from './world/types';
+import { ChunkView, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
+import { BIOME, BUILT, KINDS, SURFACE, type Ground, type Kind, type Placement, type WorldMap } from './world/types';
 
 /** The calls of the renderer the scene draws through. */
 export type Draws = Pick<
   GameRenderer,
-  'setStatic' | 'setDynamic' | 'move' | 'tint' | 'setGrass' | 'press' | 'setSunShadow' | 'setGroundTexture'
+  'setDynamic' | 'move' | 'tint' | 'setGrass' | 'press' | 'setSunShadow' | 'setGroundTexture'
 >;
 
 /** What the scene reads of the game each frame. */
@@ -79,11 +70,11 @@ export interface Played {
   t: number;
 }
 
-/** The levels of detail by `GROUND` number, and the ring each is drawn out to. */
+/** The levels of detail by `GROUND` number. */
 const LODS: readonly Lod[] = ['near', 'mid', 'far'];
-const LOD_RING = [RINGS.near, RINGS.mid, Infinity] as const;
-/** The levels made ahead of need, finest first; the coarse level of every chunk too, which a chunk the camera leaves wants. */
-const AHEAD = [GROUND.near, GROUND.mid, GROUND.far] as const;
+
+/** A placement at the origin, unturned: what a ground group is drawn with when it is switched on. */
+const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 /**
  * The tracks as drawn: a mark a little longer than a tyre is wide, lying a hair over the ground, the ground's own
@@ -251,7 +242,16 @@ export class Scene {
   private readonly view: ChunkView;
   private readonly rock: Uint8Array;
   /** The ground's groups made so far, by chunk and level: made a frame at a time ahead of need, let go once far again. */
-  private readonly ground3 = new Map<number, GameGroup[]>();
+  /**
+   * Every chunk's ground at every level, made once at boot and handed to the dynamic set first, in chunk order and each
+   * chunk's levels together: `groundAt[c * 3 + lod]` is where chunk `c`'s groups at `lod` start in it, and
+   * `groundCount` how many there are. A crossing switches a chunk's levels on and off by their counts and uploads
+   * nothing: handing the ground over again whole on each crossing was four of the crossing frame's eight
+   * milliseconds (the final pass). Each chunk's level drawn now is `groundLod[c]`, or -1 before the first.
+   */
+  private readonly groundAt: Int32Array;
+  private readonly groundCount: Int32Array;
+  private readonly groundLod: Int8Array;
   private readonly roverMatrices = new Float32Array(SLOTS * 16);
   private readonly pose = restPose();
   private readonly roverDrawn: GameGroup[];
@@ -269,8 +269,6 @@ export class Scene {
   readonly lens = new Float64Array([40, 1.6]);
   /** The rover's body, which the sight line runs to: written each frame. */
   private readonly aim = new Float64Array(3);
-  /** The way the target is going, eased, x and y, then where it was last frame: for which chunk to make ahead first. */
-  private readonly going = new Float64Array(4);
 
   /** The scenery's pools: the tall trees drawn whole, everything else drawn whole, the far trees, and what is built. */
   private readonly trees: KitBatch;
@@ -336,6 +334,9 @@ export class Scene {
     private readonly draws: Draws,
   ) {
     this.view = new ChunkView(map.grid);
+    this.groundAt = new Int32Array(this.view.cols * this.view.rows * 3);
+    this.groundCount = new Int32Array(this.view.cols * this.view.rows * 3);
+    this.groundLod = new Int8Array(this.view.cols * this.view.rows).fill(-1);
     this.rock = rockOf(map);
     this.field = cloudField(ground.bounds);
     this.clouds = Array.from({ length: CLOUD_SHAPES }, (_, k) => new Float32Array(cloudsOfShape(k) * 16));
@@ -486,6 +487,20 @@ export class Scene {
 
     // what moves, and what never does, in one dynamic set, whose room is fixed here
     const dynamic: GameGroup[] = [];
+    // the ground first, every chunk at every level, none drawn until `groundAgain` switches its level on: first, and in
+    // chunk order, so it is drawn in the order it was when it was the static set, and every picture is as it was
+    const { cols: chunkCols, rows: chunkRows } = this.view;
+    for (let c = 0; c < chunkCols * chunkRows; c++)
+      for (let lod = 0; lod < LODS.length; lod++) {
+        const groups = chunkGroups(
+          chunkMeshes(map, c % chunkCols, Math.floor(c / chunkCols), LODS[lod], this.rock),
+          map,
+          LODS[lod],
+        );
+        this.groundAt[c * 3 + lod] = dynamic.length;
+        this.groundCount[c * 3 + lod] = groups.length;
+        for (const g of groups) dynamic.push({ ...g, count: 0 });
+      }
     this.base.rover = dynamic.length;
     dynamic.push(...this.roverDrawn);
     this.base.clouds = dynamic.length;
@@ -530,8 +545,6 @@ export class Scene {
     this.handOver(this.builtLow, this.base.builtLow, true);
 
     this.view.update(target[0], target[1]);
-    this.going[2] = target[0];
-    this.going[3] = target[1];
     this.groundAgain();
     this.refill();
 
@@ -560,74 +573,25 @@ export class Scene {
     return Math.max(Math.abs((c % cols) - this.view.cx), Math.abs(Math.floor(c / cols) - this.view.cy));
   }
 
-  /** Chunk `c`'s groups at level `lod`, made now if they were not made ahead. */
-  private groupsOf(c: number, lod: number): GameGroup[] {
-    const key = c * 3 + lod;
-    let g = this.ground3.get(key);
-    if (!g) {
-      const { cols } = this.view;
-      const m = chunkMeshes(this.map, c % cols, Math.floor(c / cols), LODS[lod], this.rock);
-      this.ground3.set(key, (g = chunkGroups(m, this.map, LODS[lod])));
-    }
-    return g;
-  }
-
   /**
-   * The ground handed over again, each chunk at the level `view` says. A chunk's finer groups are kept while it is a
-   * chunk past their ring, since the target crossing back or on will want them, and let go past that, so what is kept
-   * is never more than the rings and their edge.
+   * The ground at the levels `view` says: each chunk whose level has changed has its old level's groups switched off
+   * and its new level's on, by their counts. Writes sixteen floats a group switched, and makes nothing.
    */
   private groundAgain() {
-    const { cols, rows } = this.view;
-    const groups: GameGroup[] = [];
-    for (let c = 0; c < cols * rows; c++) groups.push(...this.groupsOf(c, this.view.lod[c]));
-    for (const key of this.ground3.keys()) {
-      const lod = key % 3;
-      if (lod !== GROUND.far && this.ringOf((key - lod) / 3) > LOD_RING[lod] + 1) this.ground3.delete(key);
+    const n = this.view.cols * this.view.rows;
+    for (let c = 0; c < n; c++) {
+      const now = this.view.lod[c],
+        was = this.groundLod[c];
+      if (now === was) continue;
+      if (was >= 0) this.switchGround(c * 3 + was, 0);
+      this.switchGround(c * 3 + now, 1);
+      this.groundLod[c] = now;
     }
-    this.draws.setStatic(groups);
   }
 
-  /**
-   * One chunk's finer ground made ahead of need, if one is wanted: a chunk a step past the near or mid ring whose
-   * groups at that level are not made yet, so a crossing finds them made and makes none. One a frame, near first, so
-   * the work is spread over the frames the camera takes to cross a chunk and no frame takes it all (review 1, 20); and
-   * of those wanted, the one nearest a point ahead of the target the way it is going, so the chunks a crossing needs
-   * first are made first (review 2, 10).
-   */
-  private makeAhead(target: ArrayLike<number>) {
-    const { cols, rows } = this.view;
-    const n = cols * rows;
-    // the way the target goes, eased, and a point a chunk and a half that way
-    const w = this.going;
-    w[0] += (target[0] - w[2] - w[0]) * 0.1;
-    w[1] += (target[1] - w[3] - w[1]) * 0.1;
-    w[2] = target[0];
-    w[3] = target[1];
-    const speed = Math.sqrt(w[0] * w[0] + w[1] * w[1]);
-    const side = CHUNK_SIDE * this.map.grid.tile;
-    const ax = target[0] + (speed > 1e-6 ? (w[0] / speed) * side * 1.5 : 0),
-      ay = target[1] + (speed > 1e-6 ? (w[1] / speed) * side * 1.5 : 0);
-    const { originX, originY } = this.map.grid;
-    for (let l = 0; l < AHEAD.length; l++) {
-      const lod = AHEAD[l];
-      let best = -1,
-        nearest = Infinity;
-      for (let c = 0; c < n; c++) {
-        if (this.ringOf(c) > LOD_RING[lod] + 1 || this.ground3.has(c * 3 + lod)) continue;
-        const dx = originX + ((c % cols) + 0.5) * side - ax,
-          dy = originY + (Math.floor(c / cols) + 0.5) * side - ay;
-        const d = dx * dx + dy * dy;
-        if (d < nearest) {
-          nearest = d;
-          best = c;
-        }
-      }
-      if (best >= 0) {
-        this.groupsOf(best, lod);
-        return;
-      }
-    }
+  /** Chunk and level `key`'s groups drawn (`count` one) or not (nought). */
+  private switchGround(key: number, count: number) {
+    for (let k = 0; k < this.groundCount[key]; k++) this.draws.move(this.groundAt[key] + k, IDENTITY, count);
   }
 
   /** The scenery's pools filled again for the chunks `view` says, and handed to the renderer. */
@@ -691,7 +655,7 @@ export class Scene {
   /**
    * One frame: the camera stands at `eye` and looks at `target`, through `lens`; `dt` is the frame's length, for what
    * eases; `settled`, that it is a test's step or a paused frame, whose picture must be the whole of the game's state
-   * and the camera's. Makes nothing but when the target crosses into another chunk, and a chunk's ground made ahead.
+   * and the camera's. Makes nothing; a crossing switches the ground's levels by count and fills the pools.
    */
   frame(game: Played, eye: ArrayLike<number>, target: ArrayLike<number>, dt: number, settled = false): void {
     // a crossing's work spread over two frames while the game plays, and done whole in a settled frame (`frameWork`)
@@ -704,7 +668,6 @@ export class Scene {
       this.refillDue = false;
       this.refill();
     }
-    if (work & WORK.ahead) this.makeAhead(target);
     const { draws } = this;
 
     // the rover, from its logic

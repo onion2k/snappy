@@ -239,8 +239,8 @@ describe('a frame’s share of the scene’s work', () => {
     expect(frameWork(false, true, true)).toBe(WORK.refill);
   });
 
-  it('makes ground ahead of need only in a frame with nothing else to do, which changes nothing drawn', () => {
-    expect(frameWork(false, false, false)).toBe(WORK.ahead);
-    expect(frameWork(false, false, true)).toBe(WORK.ahead);
+  it('does nothing of it in a frame with no crossing and no pools to fill', () => {
+    expect(frameWork(false, false, false)).toBe(0);
+    expect(frameWork(false, false, true)).toBe(0);
   });
 });
