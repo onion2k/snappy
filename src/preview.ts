@@ -71,8 +71,12 @@ interface View {
   /** The game time the clouds and the water are drawn at; `shade`, the first time a cloud's shadow is over the target. */
   time?: number | 'shade';
   pose?: 'tilt';
+  /** How far the rover's eye is shut, nought open to one closed. */
+  blink?: number;
   /** False draws no clouds: for a view from over them. */
   clouds?: boolean;
+  /** False draws no grass: for a close look at what stands in it. */
+  grass?: boolean;
 }
 
 /**
@@ -86,6 +90,15 @@ const VIEWS: Record<string, View> = {
   'rover-back': { world: 'lab', rover: [0, 0, 0.35], eye: [-12, 5, 8], target: [0, 0, 2.2] },
   'rover-side': { world: 'lab', rover: [0, 0, 0], eye: [0, -14, 3.5], target: [0, 0, 2.4] },
   'rover-tilt': { world: 'lab', rover: [0, 0, 0.6], eye: [10, -11, 5], target: [0, 0, 2.2], pose: 'tilt' },
+  // the head close to: square on, and from three-quarters; then the eye half shut and shut, for the blink
+  'rover-face': { world: 'lab', rover: [0, 0, 0], eye: [6.8, 0.6, 5.4], target: [1.1, 0, 4.6] },
+  'rover-face-34': { world: 'lab', rover: [0, 0, 0], eye: [5.2, -4.6, 5.8], target: [0.9, 0, 4.4] },
+  'rover-blink': { world: 'lab', rover: [0, 0, 0], eye: [5.6, -3.2, 5.6], target: [1.1, 0, 4.6], blink: 0.5 },
+  'rover-blink-shut': { world: 'lab', rover: [0, 0, 0], eye: [5.6, -3.2, 5.6], target: [1.1, 0, 4.6], blink: 1 },
+  // shut, from below and to one side, where a lid that stops short shows a crescent of glass
+  'rover-blink-low': { world: 'lab', rover: [0, 0, 0], eye: [4.4, 2.2, 3.4], target: [1.3, 0, 4.7], blink: 1 },
+  // the wheels and the arms close to, from low at the front quarter
+  'rover-wheels': { world: 'lab', rover: [0, 0, 0], eye: [4.6, -5.6, 1.9], target: [0.4, -1.4, 1.0], grass: false },
   chase: { world: 'showcase', rover: [PLACES.start[0], PLACES.start[1], Math.PI / 2 - 0.2], chase: 90 },
   far: { world: 'showcase', rover: [PLACES.start[0], PLACES.start[1], Math.PI / 2 - 0.2], chase: 200 },
   kit: { world: 'lab-kit', eye: [0, -250, 120], target: [0, 10, 18] },
@@ -281,6 +294,7 @@ async function main() {
     pose.wheelSpin = [0.3, 0.6, 0.9, 0.2, 0.4, 0.6];
     pose.headYaw = 0.45;
   }
+  pose.blink = view.blink ?? 0;
   poseRover(matrices, pose);
   const target: [number, number, number] = view.target ?? [rx, ry, pose.z - RIG.rest + 2];
   let eye: [number, number, number];
@@ -358,7 +372,7 @@ async function main() {
   // ?grass=0 draws none, to measure what the grass costs
   // ?cap=N tries the grass with room for N blades, for working on its options
   const cap = Number(query.get('cap') ?? 0);
-  if (query.get('grass') !== '0')
+  if (query.get('grass') !== '0' && view.grass !== false)
     await renderer.setGrass(grassField(map, ground), {
       ...GRASS_OPTIONS,
       ...(cap > 0 ? { capacity: cap } : {}),

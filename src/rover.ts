@@ -127,7 +127,7 @@ const SWAY = { omega: 16, damping: 0.45, accel: 0.0007, turn: 0.0008, most: 0.08
  * turns as a critically damped spring at `quick` radians a second driving
  * and `slow` when it turns to look, so noticing someone is unhurried.
  * `height` is the head's height over the body's origin, which is where it
- * is looked up from. The eyes blink every `every` seconds and up to
+ * is looked up from. The eye blinks every `every` seconds and up to
  * `spread` more, the lid down and up in `length`, and one blink in `twice`
  * is a double blink, `again` after the first.
  */

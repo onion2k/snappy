@@ -32,21 +32,31 @@ export const ROUGH = {
 
 /**
  * The rover's colours: a warm white and not a pure one, which glares in a toon sun; golf's toy orange at its full
- * saturation, so the rover carries at the home zoom's distance (review 2, 3); a soft dark for the tyres that keeps a colour in the
- * shade; a pale blue steel for the arms; and the near black of the eyes' glass, which the toon gloss puts a highlight on.
+ * saturation, so the rover carries at the home zoom's distance (review 2, 3); a soft dark for the tyres that keeps a
+ * colour in the shade, and its tread a step lighter, so the lugs read against it; a neutral mid grey steel for the arms
+ * and joints, dark enough to stand apart from the white plastic and the tread alike; a warm foil gold; the near black
+ * of the eye's glass, which the toon gloss puts a highlight on, round a bright blue iris that makes the one lens read
+ * as an eye from the chase camera; and a red light by it, a camera's sign that it is on. The lid is the barrel's
+ * orange with a dark seam across it, so the eye shut reads as a lid closed and never as a blank white eyeball; the
+ * screen on the back is near black.
  */
 export const ROVER_COLOURS = {
   white: shown(0.96, 0.94, 0.89),
   orange: shown(1, 0.45, 0.04),
   dark: shown(0.25, 0.25, 0.3),
-  tyre: shown(0.33, 0.32, 0.35),
-  steel: shown(0.7, 0.74, 0.8),
-  lens: shown(0.06, 0.09, 0.2),
+  tyre: shown(0.3, 0.29, 0.32),
+  tread: shown(0.36, 0.35, 0.38),
+  steel: shown(0.42, 0.45, 0.5),
+  lens: shown(0.05, 0.07, 0.17),
   ring: shown(0.16, 0.17, 0.22),
+  iris: shown(0.22, 0.56, 0.95),
   glint: shown(1, 1, 1),
-  gold: shown(0.96, 0.76, 0.3),
+  light: shown(1, 0.18, 0.16),
+  lid: shown(1, 0.45, 0.04),
+  seam: shown(0.42, 0.2, 0.08),
+  screen: shown(0.1, 0.13, 0.2),
+  gold: shown(0.93, 0.66, 0.22),
   rtg: shown(0.4, 0.4, 0.44),
-  cheek: shown(0.98, 0.62, 0.55),
 } as const;
 
 /**

@@ -34,6 +34,8 @@ function anyPose(k: number): RoverPose {
     bogieR: r(10),
     wheelSpin: [r(11) * 40, r(12) * 40, r(13) * 40, r(14) * 40, r(15) * 40, r(16) * 40],
     headYaw: r(17) * 3,
+    headPitch: r(18),
+    blink: r(19) + 0.5,
   };
 }
 
@@ -42,9 +44,9 @@ describe('the rover', () => {
     expect(RIG.mast[2] + RIG.mastHeight).toBeCloseTo(HEAD.height, 6);
   });
 
-  it('is cheap: under three thousand triangles, every wheel counted', () => {
-    expect(roverTriangles()).toBeLessThan(3000);
-    expect(roverTriangles()).toBeGreaterThan(500);
+  it('is cheap and well made: under twelve thousand triangles, every wheel counted, and over five thousand', () => {
+    expect(roverTriangles()).toBeLessThan(12000);
+    expect(roverTriangles()).toBeGreaterThan(5000);
   });
 
   it('places every part at a slot there is', () => {
