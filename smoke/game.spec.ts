@@ -132,6 +132,134 @@ test('looks round with a drag on the view and with Q and E, and comes back behin
   expect(problems).toEqual([]);
 });
 
+test('F raises the viewfinder at the rover eye, Space takes a picture and shows its card, Escape lowers it', async ({
+  page,
+}) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  await page.evaluate(() => window.game!.step(240));
+  const chase = await page.evaluate(() => window.game!.camera());
+  const rover = await page.evaluate(() => window.game!.rover());
+  await page.evaluate(() => window.game!.resume());
+  // out of it, the camera button and nothing else of the camera's
+  await expect(page.locator('#cameraBtn')).toBeVisible();
+  for (const hidden of ['#vf', '#vfHelp', '#shutterBtn', '#afBtn', '#card'])
+    await expect(page.locator(hidden)).toBeHidden();
+  await page.keyboard.press('KeyF');
+  await expect(page.locator('#vf')).toBeVisible();
+  await expect(page.locator('#vfHelp .keys')).toBeVisible();
+  await expect(page.locator('#help')).toBeHidden();
+  await expect(page.locator('#shutterBtn')).toBeVisible();
+  const vf = await page.evaluate(() => window.game!.viewfinder());
+  expect(vf.active).toBe(true);
+  expect(vf.focal).toBe(50);
+  // the rover stands where it was, the drive keys held and all, while the player looks
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(500);
+  await page.keyboard.up('KeyW');
+  const still = await page.evaluate(() => window.game!.rover());
+  expect([still.x, still.y]).toEqual([rover.x, rover.y]);
+  // the shutter: a picture, its card, and the event told
+  await page.keyboard.press('Space');
+  await expect(page.locator('#card')).toBeVisible();
+  expect((await page.evaluate(() => window.game!.events())).some((e) => e.startsWith('photo '))).toBe(true);
+  await expect(page.locator('#cardTotal')).toHaveText(/^\d+$/);
+  // a print of the picture on it, and a line on what let it down, never "not seen" of what was seen
+  expect(await printSpread(page), 'the print is a picture, not a blank').toBeGreaterThan(5);
+  await expect(page.locator('#cardWords')).not.toBeEmpty();
+  // and gone again after its three seconds
+  await expect(page.locator('#card')).toBeHidden({ timeout: 5000 });
+  // a card still showing goes with the viewfinder
+  await page.keyboard.press('Space');
+  await expect(page.locator('#card')).toBeVisible();
+  await page.keyboard.press('KeyF');
+  await expect(page.locator('#card')).toBeHidden();
+  await page.keyboard.press('KeyF');
+  // Escape: back to the chase camera, where it was
+  await page.keyboard.press('Escape');
+  for (const hidden of ['#vf', '#vfHelp', '#shutterBtn', '#afBtn']) await expect(page.locator(hidden)).toBeHidden();
+  await expect(page.locator('#help')).toBeVisible();
+  await page.evaluate(() => window.game!.pause());
+  expect((await page.evaluate(() => window.game!.viewfinder())).active).toBe(false);
+  const back = await page.evaluate(() => window.game!.camera());
+  for (let k = 0; k < 3; k++) expect(back.position[k]).toBeCloseTo(chase.position[k], 2);
+  expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+/** How much is in the card's print: the spread of its brightness, nought for a blank. */
+function printSpread(page: Page) {
+  return page.evaluate(() => {
+    const c = document.getElementById('cardPrint') as HTMLCanvasElement;
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0,
+      sq = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      sum += y;
+      sq += y * y;
+    }
+    const n = d.length / 4;
+    return Math.sqrt(sq / n - (sum / n) ** 2);
+  });
+}
+
+test('the viewfinder blurs, and a slower machine stepped down a rung gives the blur up first', async ({ page }) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  expect((await page.evaluate(() => window.game!.viewfinder())).blurred, 'not out of it').toBe(false);
+  await page.evaluate(() => window.game!.photo(true));
+  expect((await page.evaluate(() => window.game!.viewfinder())).blurred).toBe(true);
+  await start(page, { seed: 1, paused: true, rung: 1 });
+  await page.evaluate(() => window.game!.photo(true));
+  expect((await page.evaluate(() => window.game!.viewfinder())).blurred, 'at the first rung down').toBe(false);
+  expect(problems).toEqual([]);
+});
+
+test('in the viewfinder a drag turns the view, the wheel zooms the lens, a click focuses and A goes back to auto', async ({
+  page,
+}) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  await page.evaluate(() => window.game!.photo(true));
+  const view = (await page.locator('#view').boundingBox())!;
+  const cx = view.x + view.width / 2,
+    cy = view.y + view.height / 2;
+  const before = await page.evaluate(() => window.game!.viewfinder());
+  // dragged right and down: the scene goes with the hand, so the view turns left and tilts up
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 120, cy + 60, { steps: 6 });
+  await page.mouse.up();
+  const dragged = await page.evaluate(() => window.game!.viewfinder());
+  expect(dragged.yaw).toBeGreaterThan(before.yaw + 0.05);
+  expect(dragged.pitch).toBeGreaterThan(before.pitch + 0.02);
+  expect(dragged.mode, 'a drag is not a tap').toBe('auto');
+  // the wheel toward the player is a longer lens, and it stops at 135
+  await page.mouse.wheel(0, -400);
+  await page.evaluate(() => window.game!.step(1));
+  expect((await page.evaluate(() => window.game!.viewfinder())).focal).toBeGreaterThan(50);
+  for (let k = 0; k < 10; k++) await page.mouse.wheel(0, -800);
+  await page.evaluate(() => window.game!.step(1));
+  expect((await page.evaluate(() => window.game!.viewfinder())).focal).toBe(135);
+  // a click without a drag: focus set by hand, its mark where the click was (y up)
+  await page.mouse.click(cx - view.width / 4, cy + view.height / 4);
+  const tapped = await page.evaluate(() => window.game!.viewfinder());
+  expect(tapped.mode).toBe('manual');
+  expect(tapped.mark[0]).toBeCloseTo(-0.5, 2);
+  expect(tapped.mark[1]).toBeCloseTo(-0.5, 2);
+  await expect(page.locator('#vfMode')).toHaveText('MF');
+  await page.keyboard.press('KeyA');
+  await page.evaluate(() => window.game!.step(1));
+  expect((await page.evaluate(() => window.game!.viewfinder())).mode).toBe('auto');
+  await expect(page.locator('#vfMode')).toHaveText('AF');
+  // a picture while the game is stopped is not taken
+  await page.keyboard.press('Space');
+  await expect(page.locator('#card')).toBeHidden();
+  expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 400, height: 860 }, hasTouch: true, isMobile: true });
 
@@ -168,6 +296,84 @@ test.describe('on a phone', () => {
       'the stick drives, and does not turn the view',
     ).toBe(0);
     expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+
+  test('raises the viewfinder and takes a picture with a tap on each button, the stick put away meanwhile', async ({
+    page,
+  }, info) => {
+    const problems = watch(page);
+    await start(page, { seed: 1 });
+    const camera = page.locator('#cameraBtn');
+    await expect(camera).toBeVisible();
+    for (const b of [await camera.boundingBox()]) expect(Math.min(b!.width, b!.height)).toBeGreaterThanOrEqual(48);
+    await camera.tap();
+    expect((await page.evaluate(() => window.game!.viewfinder())).active).toBe(true);
+    await expect(page.locator('.stick')).toBeHidden();
+    const shutter = page.locator('#shutterBtn'),
+      af = page.locator('#afBtn');
+    for (const b of [await shutter.boundingBox(), await af.boundingBox()])
+      expect(Math.min(b!.width, b!.height)).toBeGreaterThanOrEqual(48);
+    // the help in a finger's words, and not the keyboard's
+    await expect(page.locator('#vfHelp .touch')).toBeVisible();
+    await expect(page.locator('#vfHelp .touch')).toContainText('tap to focus');
+    await expect(page.locator('#vfHelp .keys')).toBeHidden();
+    await shutter.tap();
+    await expect(page.locator('#card')).toBeVisible();
+    // the card is a small one along the bottom, clear of the shutter, its print a picture
+    const card = (await page.locator('#card').boundingBox())!;
+    const button = (await shutter.boundingBox())!;
+    expect(card.y, 'along the bottom').toBeGreaterThan(860 / 2);
+    expect(card.x + card.width, 'clear of the shutter').toBeLessThanOrEqual(button.x);
+    expect(card.height).toBeLessThan(200);
+    expect(await printSpread(page)).toBeGreaterThan(5);
+    await info.attach('phone viewfinder', { body: await page.screenshot(), contentType: 'image/png' });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(400);
+    await camera.tap();
+    expect((await page.evaluate(() => window.game!.viewfinder())).active).toBe(false);
+    await expect(page.locator('.stick')).toBeVisible();
+    expect(problems).toEqual([]);
+  });
+
+  test('in the viewfinder, a finger drags the view, two pinch the lens and a tap focuses', async ({ page }) => {
+    const problems = watch(page);
+    await start(page, { seed: 1, paused: true });
+    await page.evaluate(() => window.game!.photo(true));
+    const before = await page.evaluate(() => window.game!.viewfinder());
+    // fingers, as the browser tells of them: pointer events of the touch kind, on the view itself
+    const after = await page.evaluate(() => {
+      const view = document.getElementById('view')!;
+      const at = (type: string, id: number, x: number, y: number) =>
+        view.dispatchEvent(
+          new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true }),
+        );
+      const g = window.game!;
+      // one finger dragged left: the scene goes with it, so the view turns right
+      at('pointerdown', 1, 250, 400);
+      for (let x = 240; x >= 150; x -= 10) at('pointermove', 1, x, 400);
+      at('pointerup', 1, 150, 400);
+      const dragged = g.viewfinder();
+      // two fingers spread apart: a longer lens
+      at('pointerdown', 2, 180, 400);
+      at('pointerdown', 3, 220, 400);
+      for (let d = 30; d <= 120; d += 10) {
+        at('pointermove', 2, 200 - d, 400);
+        at('pointermove', 3, 200 + d, 400);
+      }
+      at('pointerup', 2, 80, 400);
+      at('pointerup', 3, 320, 400);
+      const pinched = g.viewfinder();
+      // a tap, lifted where it was set down: focus by hand
+      at('pointerdown', 4, 100, 215);
+      at('pointerup', 4, 100, 215);
+      return { dragged, pinched, tapped: g.viewfinder() };
+    });
+    expect(after.dragged.yaw).toBeLessThan(before.yaw - 0.05);
+    expect(after.dragged.mode, 'a drag is not a tap').toBe('auto');
+    expect(after.pinched.focal).toBeGreaterThan(before.focal * 2);
+    expect(after.tapped.mode).toBe('manual');
+    expect(after.tapped.mark[0]).toBeCloseTo(-0.5, 2);
+    expect(after.tapped.mark[1]).toBeCloseTo(0.5, 2);
     expect(problems).toEqual([]);
   });
 

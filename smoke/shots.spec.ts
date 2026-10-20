@@ -48,6 +48,12 @@ const VIEWS = [
   'sky',
   'edge',
   'fixture',
+  'duck',
+  'gnome',
+  'ufo',
+  'ufo-below',
+  'oddities',
+  'fixture-odd',
 ];
 
 const OUT = 'reports/shots';
@@ -79,7 +85,9 @@ test.describe('the models, pictured', () => {
       };
       mkdirSync(OUT, { recursive: true });
       await page.locator('#stats').evaluate((el: HTMLElement) => (el.hidden = true));
-      await page.locator('#view').screenshot({ path: `${OUT}/${view}.png` });
+      // a viewfinder's picture is the page's, the marks over the frame and all
+      if (GAME_VIEWS[view].photo) await page.screenshot({ path: `${OUT}/${view}.png` });
+      else await page.locator('#view').screenshot({ path: `${OUT}/${view}.png` });
       expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
       expect(problems).toEqual([]);
     });

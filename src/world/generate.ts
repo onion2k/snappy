@@ -31,6 +31,7 @@ import {
   type Piece,
 } from './layout';
 import { memoGround } from './memo';
+import { inClearing, placeOddities } from './oddities';
 import { biomes, rock, strongest, surfaces } from './paint';
 import { clipLine, inside, ruinOutline, squareOutline } from './plaza';
 import { relief, type RoadLine } from './relief';
@@ -147,7 +148,9 @@ export function generate(): { map: WorldMap; stats: WorldStats } {
     ...v.beds,
     ...poolLilies(),
   ]).map((piece) => placePiece(piece, biomeAt(...xy(piece)), ORIGIN_X, ORIGIN_Y, ground, random));
-  map.obstacles = obstaclesOf(small);
+  // the oddities, set by hand and drawing on a seed of their own; a gnome is an obstacle as a lamp is
+  const odd = placeOddities(ground, map.waterLevel, units, biomeAt);
+  map.obstacles = obstaclesOf(small.concat(odd));
   const solidGround = groundOf(map);
 
   // Mend: ground the rover fits on but that is cut off from the start, by water, rock or a bank all round
@@ -181,7 +184,11 @@ export function generate(): { map: WorldMap; stats: WorldStats } {
     }
 
   map.landmarks = landmarks(map, r.roads, reached);
-  map.placements = built.concat(small, scatter(map, solidGround, stand, r.roadDist, random, r.water));
+  // what is sown is cleared from round each oddity after the sowing, so the chance it is sown with is as it was
+  const sown = scatter(map, solidGround, stand, r.roadDist, random, r.water).filter(
+    (p) => !inClearing(p.kind, (p.x - ORIGIN_X) / TILE, (p.y - ORIGIN_Y) / TILE),
+  );
+  map.placements = built.concat(small, odd, sown);
   return {
     map,
     stats: { mended: mendedList.length, mendedTiles: Int32Array.from(mendedList), ms: performance.now() - began },
@@ -203,6 +210,11 @@ function xy(piece: Piece): [number, number] {
 export const OBSTACLE: Partial<Record<Kind, readonly (readonly [number, number, number])[]>> = {
   lamp: [[0, 0, 0.9]],
   signpost: [[0, 0, 0.9]],
+  /**
+   * A garden gnome: his round base, half a metre tall, as wide as all of him, so the rover meets the barrow before the
+   * orchard's gnome or the boots of the one asleep and not only his coat.
+   */
+  gnome: [[0, 0, 1.6]],
   bench: [
     [0, -3.4, 1.6],
     [0, 0, 1.6],

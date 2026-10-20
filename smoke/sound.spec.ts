@@ -203,3 +203,36 @@ test('the same seed gives the same music twice', async ({ page }) => {
   expect(second).toEqual(first);
   expect(problems).toEqual([]);
 });
+
+test('the shutter clicks once the sound is awake, makes nothing before the first gesture, and muted still counts', async ({
+  page,
+}) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  await page.evaluate(() => window.game!.photo(true));
+  // before any gesture: a picture is taken, and no context is made for its click
+  await page.evaluate(() => window.game!.shutter());
+  expect(await page.evaluate(() => window.game!.sound()), 'no context before a gesture').toMatchObject({
+    awake: false,
+    voices: 0,
+  });
+  // awake, a picture is a voice more, at once
+  const clicked = await page.evaluate(() => {
+    const g = window.game!;
+    g.wake();
+    const before = g.sound().voices;
+    g.shutter();
+    return g.sound().voices - before;
+  });
+  expect(clicked).toBe(1);
+  // muted, the click is still made and counted, and not heard
+  const muted = await page.evaluate(() => {
+    const g = window.game!;
+    g.mute(true);
+    const before = g.sound().voices;
+    g.shutter();
+    return g.sound().voices - before;
+  });
+  expect(muted).toBe(1);
+  expect(problems).toEqual([]);
+});

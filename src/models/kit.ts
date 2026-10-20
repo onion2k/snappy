@@ -20,10 +20,23 @@
 import type { GameGroup } from 'artshape-render/game/renderer';
 import { MeshBuilder, type Mesh } from 'artshape-render/mesh/types';
 import { SUN } from '../sun';
-import { BIOME, BUILT, KINDS, type Biome, type Kind, type Placement } from '../world/types';
+import {
+  BIOME,
+  BUILT,
+  KINDS,
+  SUBJECT_KINDS,
+  SUBJECTS,
+  lookOf,
+  paintOf,
+  type Biome,
+  type Kind,
+  type Placement,
+  type SubjectKind,
+} from '../world/types';
 import { BUILT_VARIANTS, builtOf, footprintOf, type BuiltKind } from './built';
 import { BUILT_COLOURS as B, ROUGH, WOOD, shown, type Rgb } from './palette';
 import { farTreeMeshes } from './backdrop';
+import { ODDITY_PARTS, oddityOf } from './oddities';
 import { SIZE, sceneryOf, type SceneryKind } from './scenery';
 import { TIERS, capHull, clippedBelow, split, type Tier } from './shape';
 import { at, lump, seeded } from 'artshape-render/mesh/lowpoly';
@@ -68,6 +81,8 @@ export function bucketOf(yaw: number): number {
 export function variantsOf(kind: Kind): number {
   if (TONED.has(kind)) return BUCKETS;
   if (BUILT.has(kind)) return BUILT_VARIANTS[kind as BuiltKind];
+  // an oddity in its kind's looks, a gnome's poses and a duck's colours and hats
+  if (SUBJECT_KINDS.has(kind)) return SUBJECTS[kind as SubjectKind].looks.length;
   // what is made, and is the same every time, in one; a signpost's arms differ; the rest in three
   return kind === 'post' || kind === 'bench' || kind === 'lamp' ? 1 : kind === 'signpost' ? 2 : 3;
 }
@@ -78,9 +93,13 @@ const scramble = (v: number) => {
   return x - Math.floor(x);
 };
 
-/** Which variant a placement is drawn as: its yaw's bucket for a tree, and otherwise chosen by its `vary`. */
+/**
+ * Which variant a placement is drawn as: its yaw's bucket for a tree, an oddity's look as the world set it in its
+ * `vary` (`lookOf`), and otherwise chosen by its `vary`.
+ */
 export function variantOf(p: Placement): number {
   if (TONED.has(p.kind)) return bucketOf(p.yaw);
+  if (SUBJECT_KINDS.has(p.kind)) return lookOf(p.kind as SubjectKind, p.vary);
   return Math.min(variantsOf(p.kind) - 1, Math.floor(scramble(p.vary) * variantsOf(p.kind)));
 }
 
@@ -125,11 +144,17 @@ export function kindPieces(kind: Kind): KitPiece[] {
   const out: KitPiece[] = [];
   const n = variantsOf(kind);
   for (let v = 0; v < n; v++) {
-    const model = BUILT.has(kind) ? builtOf(kind as BuiltKind, v) : sceneryOf(kind as SceneryKind, v + 1);
+    const odd = SUBJECT_KINDS.has(kind);
+    const model = BUILT.has(kind)
+      ? builtOf(kind as BuiltKind, v)
+      : odd
+        ? oddityOf(kind as SubjectKind, v)
+        : sceneryOf(kind as SceneryKind, v + 1);
     for (const part of model.parts) {
       const tiers = TONED.has(kind) ? TIERED[part.name] : undefined;
       const lift = part.name === 'crown' ? CROWN_LIFT : ONE;
-      const base = { kind, variant: v, part: part.name, rough: roughOf(part.name), size: 1, far: false };
+      const rough = odd ? ODDITY_PARTS[part.name].rough : roughOf(part.name);
+      const base = { kind, variant: v, part: part.name, rough, size: 1, far: false };
       if (!tiers) {
         out.push({ ...base, tier: 0, mesh: part.mesh, mul: lift });
         continue;
@@ -446,6 +471,11 @@ function paletteOf(kind: Kind, part: string): Palette | readonly Rgb[] {
     case 'bench':
     case 'lamp':
       return PROP_PART[part] ?? [B.timber];
+    // the oddities: each part its own colour, the same in every biome
+    case 'duck':
+    case 'gnome':
+    case 'ufo':
+      return ODDITY_PARTS[part].colours ?? [ODDITY_PARTS[part].colour];
     // the built kinds, answered above
     case 'cottage':
     case 'church':
@@ -471,8 +501,11 @@ function paletteOf(kind: Kind, part: string): Palette | readonly Rgb[] {
 export function partColour(kind: Kind, part: string, biome: Biome, vary: number, out: Float32Array, o: number) {
   const palette = paletteOf(kind, part);
   const list = Array.isArray(palette) ? (palette as readonly Rgb[]) : (palette as Palette)[biome];
-  const c = list[Math.min(list.length - 1, Math.floor(vary * list.length))];
-  const shade = BUILT.has(kind) ? 1 : 0.9 + 0.2 * scramble(vary + 0.5);
+  // an oddity's `vary` says its look first, and then its paint, which picks its colours (`paintOf`)
+  const pick = SUBJECT_KINDS.has(kind) ? paintOf(kind as SubjectKind, vary) : Math.floor(vary * list.length);
+  const c = list[Math.min(list.length - 1, pick)];
+  // what is made is the colour it was made in; what grows varies a little
+  const shade = BUILT.has(kind) || SUBJECT_KINDS.has(kind) ? 1 : 0.9 + 0.2 * scramble(vary + 0.5);
   out[o] = c[0] * shade;
   out[o + 1] = c[1] * shade;
   out[o + 2] = c[2] * shade;

@@ -624,3 +624,36 @@ describe('the head and the eyes', () => {
     expect(doubles).toBeLessThan(starts.length / 2);
   });
 });
+
+describe('held for the viewfinder', () => {
+  it('stops dead when halted, and stands where it was while it is stepped with nothing', () => {
+    const r = roverAt(16, 2, EAST);
+    drive(r, 1, 1, 0.5);
+    expect(Math.abs(r.speed)).toBeGreaterThan(1);
+    r.halt();
+    expect(r.speed).toBe(0);
+    expect(r.yawRate).toBe(0);
+    const [x, y, yaw] = [r.x, r.y, r.yaw];
+    drive(r, 1, 0);
+    expect([r.x, r.y, r.yaw]).toEqual([x, y, yaw]);
+  });
+
+  it('turns its head exactly as it is held, and springs back once let go', () => {
+    const r = roverAt(16, 2, EAST);
+    r.hold[0] = 1;
+    r.hold[1] = 2.5;
+    r.hold[2] = -0.6;
+    r.step(DT, { throttle: 0, steer: 0 });
+    expect(r.headYaw).toBe(2.5);
+    expect(r.headPitch).toBe(-0.6);
+    // held, it takes no notice of a camera to look at however long it stands
+    for (let f = 0; f < 300; f++) {
+      r.lookAt(r.x - 40, r.y, 60);
+      r.step(DT, { throttle: 0, steer: 0 });
+    }
+    expect(r.headYaw).toBe(2.5);
+    r.hold[0] = 0;
+    for (let f = 0; f < 60; f++) r.step(DT, { throttle: 1, steer: 0 });
+    expect(Math.abs(r.headYaw)).toBeLessThan(0.15);
+  });
+});

@@ -22,6 +22,7 @@ import { gzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { start, watch } from './game';
 import { drivenMoved, moved as hasMoved, type Figures } from './judging';
+import { GAME_VIEWS, placeView } from './views';
 
 const BASELINE = 'smoke/perf-baseline.json';
 /** What the game may cost at all, on this machine, whatever it cost before. */
@@ -173,5 +174,25 @@ test('a driven run across chunks: its worst frame, held to the baseline and the 
     );
   }
   expect(worst, 'the driven run’s worst frame within the frame budget').toBeLessThanOrEqual(BUDGET.frameMs);
+  expect(problems).toEqual([]);
+});
+
+/**
+ * A frame in the viewfinder, with the depth of field laid on it: the duck on the mill pond through a short telephoto,
+ * its far shore blurred, as the look's picture of it has it. Held to the frame budget only, and not yet to a baseline:
+ * printed beside the chase camera's frame from the same place, so the blur's cost is read off the two.
+ */
+test('a frame in the viewfinder, blurred, within the budget', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const problems = watch(page);
+  await start(page, { seed: 11, paused: true });
+  await placeView(page, GAME_VIEWS['game-photo-duck']);
+  const viewfinder = await page.evaluate(() => window.game!.measureFrame());
+  await page.evaluate(() => window.game!.photo(false));
+  const chase = await page.evaluate(() => window.game!.measureFrame(0.1));
+  const figures = { viewfinderMs: Math.round(viewfinder * 1000) / 1000, chaseMs: Math.round(chase * 1000) / 1000 };
+  info.annotations.push({ type: 'viewfinder', description: JSON.stringify(figures) });
+  console.log(`viewfinder: frame ${figures.viewfinderMs} ms blurred; the chase camera there ${figures.chaseMs} ms`);
+  expect(figures.viewfinderMs, 'the viewfinder’s frame within budget').toBeLessThanOrEqual(BUDGET.frameMs);
   expect(problems).toEqual([]);
 });

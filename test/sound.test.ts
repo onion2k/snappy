@@ -50,7 +50,8 @@ vi.mock('artshape-sound/player', () => ({
   },
 }));
 
-const { GameSound, LazySound } = await import('../src/sound');
+const { GameSound, LazySound, SHUTTER } = await import('../src/sound');
+const { checkPatch } = await import('artshape-sound/patch');
 const context = {} as BaseAudioContext;
 
 beforeEach(() => {
@@ -58,9 +59,9 @@ beforeEach(() => {
 });
 
 describe('the game sound', () => {
-  it('loads no sound of its own yet, and a player on the calm song', () => {
+  it('loads the shutter’s click, its one sound of its own, and a player on the calm song', () => {
     new GameSound({ context });
-    expect(asked.calls.filter((c) => c[0] === 'load')).toEqual([]);
+    expect(asked.calls.filter((c) => c[0] === 'load')).toEqual([['load', 'shutter']]);
     expect(asked.calls.filter((c) => c[0] === 'player')).toEqual([['player', 90]]);
   });
 
@@ -95,6 +96,19 @@ describe('the game sound', () => {
     expect(sound.volume).toBe(0.2);
   });
 
+  it('plays the shutter’s click when a picture is taken', () => {
+    const sound = new GameSound({ context });
+    asked.calls.length = 0;
+    sound.shutter();
+    expect(asked.calls).toEqual([['play', 'shutter']]);
+  });
+
+  it('makes its click a short burst the package will take', () => {
+    expect(checkPatch(SHUTTER)).toBe(null);
+    expect(SHUTTER.wave).toBe('noise');
+    expect(SHUTTER.attack + SHUTTER.sustain + SHUTTER.release).toBeLessThan(0.15);
+  });
+
   it('reports the voices sounding', () => {
     expect(new GameSound({ context }).voices).toBe(3);
   });
@@ -127,6 +141,14 @@ describe('the sound made on the first gesture', () => {
     expect(asked.calls).toEqual([]);
     expect(sound.voices).toBe(0);
     expect(sound.beat).toBe(0);
+  });
+
+  it('makes no click and queues none for a picture taken before it is woken', () => {
+    const { sound } = lazy();
+    sound.shutter();
+    expect(asked.calls).toEqual([]);
+    sound.wake();
+    expect(asked.calls.filter((c) => c[0] === 'play')).toEqual([]);
   });
 
   it('answers the save before it is woken, and a mute made meanwhile', () => {
@@ -168,9 +190,11 @@ describe('the sound made on the first gesture', () => {
     asked.calls.length = 0;
     sound.step(1 / 60);
     sound.mute(true);
+    sound.shutter();
     expect(asked.calls).toEqual([
       ['step', 1 / 60],
       ['mute', true],
+      ['play', 'shutter'],
     ]);
     expect(sound.muted).toBe(true);
     expect(sound.voices).toBe(3);

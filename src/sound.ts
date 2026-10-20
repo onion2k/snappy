@@ -2,8 +2,8 @@
  * The sound is a package of its own, artshape-sound, which knows nothing of
  * arenas: a patch is a handful of numbers, a song is a tempo and a
  * pattern, and what the game hears is whichever it asks for by name. This is
- * the game's side of it: the music, for now, and the place a sound the game
- * makes will be loaded. Everything in the game that makes a noise goes through here, so the
+ * the game's side of it: the music, and the shutter's click, the first sound
+ * the game makes of its own. Everything in the game that makes a noise goes through here, so the
  * package stays behind one door, and a change it needs goes in its own repo
  * with a version bump here. It knows nothing of the page: the context, the
  * first gesture and the key are main.ts's.
@@ -15,8 +15,29 @@
  * boot gate would measure the page with a cost the player never waits on.
  */
 import { Audio } from 'artshape-sound/audio';
+import { DEFAULT_PATCH, type Patch } from 'artshape-sound/patch';
 import { Player } from 'artshape-sound/player';
 import { calm } from 'artshape-sound/songs';
+
+/**
+ * The shutter: a camera's click is a hiss of the blades cut off short, so it is noise, struck at once, a hundredth of
+ * a second held and gone in four more, through a filter that closes fast, so it is a tick and not a splash. A little
+ * jitter, so two pictures in a row do not click alike.
+ */
+export const SHUTTER: Patch = {
+  ...DEFAULT_PATCH,
+  wave: 'noise',
+  frequency: 2400,
+  slide: -12000,
+  attack: 0,
+  sustain: 0.012,
+  release: 0.045,
+  punch: 0.7,
+  volume: 0.45,
+  cutoff: 7000,
+  cutoffSlide: -90000,
+  jitter: 0.1,
+};
 
 export interface SoundOptions {
   /** The page's own AudioContext, so that which one the browser has is the page's to say. */
@@ -33,7 +54,13 @@ export class GameSound {
 
   constructor({ context, random, volume, muted }: SoundOptions) {
     this.audio = new Audio({ context, random, volume, muted });
+    this.audio.load('shutter', SHUTTER);
     this.music = new Player(this.audio, calm);
+  }
+
+  /** A picture taken: the shutter's click. */
+  shutter() {
+    this.audio.play('shutter');
   }
 
   /** The music on by `dt` seconds of game time: a game that is not stepping has no music. */
@@ -108,6 +135,11 @@ export class LazySound {
 
   step(dt: number) {
     this.sound?.step(dt);
+  }
+
+  /** The shutter's click; before the first gesture, nothing, and nothing kept to play later. */
+  shutter() {
+    this.sound?.shutter();
   }
 
   mute(on: boolean) {

@@ -174,3 +174,70 @@ describe('a tree at the edge of the camera’s way', () => {
     },
   );
 });
+
+describe('the oddities', () => {
+  const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+  let scene: Scene;
+
+  beforeAll(async () => {
+    scene = new Scene(game.map, game.ground, draws);
+    await scene.build([game.map.start.x, game.map.start.y, 0]);
+  }, 60_000);
+
+  it('are every one drawn, wherever the camera is, and a UFO where its bob has lifted it', () => {
+    const s = game.subjects;
+    const out = new Float64Array(s.count * 3);
+    // the camera over the far corner of the world from most of them
+    const { minX, minY } = game.ground.bounds;
+    const target = [minX + 10, minY + 10, 0];
+    scene.frame(game, [target[0], target[1] - 80, 100], target, 1 / 60, true);
+    expect(scene.drawnOddities(out)).toBe(s.count);
+    const laid = out.slice();
+    for (let k = 0; k < s.count; k++) {
+      expect(out[k * 3], s.kinds[k]).toBeCloseTo(s.x[k], 3);
+      expect(out[k * 3 + 1], s.kinds[k]).toBeCloseTo(s.y[k], 3);
+    }
+    // the game stepped on to a moment the UFOs are lifted, and the scene drawn again
+    for (let f = 0; f < 40; f++) game.step(1 / 60);
+    scene.frame(game, [target[0], target[1] - 80, 100], target, 1 / 60, true);
+    scene.drawnOddities(out);
+    for (let k = 0; k < s.count; k++) {
+      expect(out[k * 3 + 2] - laid[k * 3 + 2], s.kinds[k]).toBeCloseTo(s.lift[k], 4);
+    }
+    expect(s.kinds.some((k, i) => k === 'ufo' && Math.abs(s.lift[i]) > 0.1)).toBe(true);
+  });
+});
+
+describe('the trees thinned and dithered', () => {
+  /** Where every instance the scene hands the renderer stands, within `reach` of (x, y), drawn from `map`. */
+  async function drawnNear(map: Game['map'], x: number, y: number, reach: number): Promise<string[]> {
+    let dynamic: { count?: number; matrices: Float32Array }[] = [];
+    const recording = { ...draws, setDynamic: (d: typeof dynamic) => (dynamic = d) } as unknown as Draws;
+    const game = new Game(new Progress(memoryStore()), { random: seeded(1), map });
+    const scene = new Scene(map, game.ground, recording);
+    await scene.build([x, y, 0]);
+    game.rover.teleport(x, y, Math.PI / 2);
+    const cam = new ChaseCamera();
+    cam.snap(game.rover, game.ground);
+    scene.frame(game, cam.position, cam.target, 0, true);
+    const at: string[] = [];
+    for (const g of dynamic)
+      for (let i = 0; i < (g.count ?? 0); i++) {
+        const dx = g.matrices[i * 16 + 12] - x,
+          dy = g.matrices[i * 16 + 13] - y;
+        if (Math.abs(dx) < reach && Math.abs(dy) < reach) at.push(`${dx.toFixed(2)},${dy.toFixed(2)}`);
+      }
+    return at.sort();
+  }
+
+  it('are the same trees when the world gains a placement before them in its list', async () => {
+    // the marsh's willows, thinned, and the trees at the edge of those drawn whole, chosen once by where each was in the
+    // world's list: the oddities, laid before the sowing, moved every tree after them and chose others (2026-10-20)
+    const map = new Game(new Progress(memoryStore()), { random: seeded(1) }).map;
+    const marsh = map.landmarks.find((l) => l.name === 'marsh')!;
+    const [x, y] = [marsh.x - 10, marsh.y - 40];
+    const corner = { ...map.placements[0], kind: 'flowers' as const, x: map.grid.originX + 3, y: map.grid.originY + 3 };
+    const more = { ...map, placements: [corner, ...map.placements] };
+    expect(await drawnNear(more, x, y, 60)).toEqual(await drawnNear(map, x, y, 60));
+  }, 60_000);
+});

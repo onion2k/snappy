@@ -35,7 +35,7 @@ import {
   type CloudField,
 } from './models/clouds';
 import { GRASS_OPTIONS, grassField } from './models/grass';
-import { KitBatch, WATER_AT, farPieces, kindPieces, lowPieces, partColour } from './models/kit';
+import { KitBatch, WATER_AT, farPieces, kindPieces, lowPieces, partColour, variantOf } from './models/kit';
 import { BIOME_GROUND, CLOUD, ROUGH, WATER } from './models/palette';
 import { DETAIL_LAYER, detailTexels, pavingGroups, pavingOf } from './models/paving';
 import { SLOTS, poseOf, poseRover, restPose, roverGroups } from './models/rover';
@@ -54,7 +54,17 @@ import { waterGroups, waterMeshes } from './models/water';
 import { ROVER, type Rover } from './rover';
 import { TRACKS, type Tracks } from './tracks';
 import { ChunkView, HOLD, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
-import { BIOME, BUILT, KINDS, SURFACE, type Ground, type Kind, type Placement, type WorldMap } from './world/types';
+import {
+  BIOME,
+  BUILT,
+  KINDS,
+  SUBJECT_KINDS,
+  SURFACE,
+  type Ground,
+  type Kind,
+  type Placement,
+  type WorldMap,
+} from './world/types';
 
 /** The calls of the renderer the scene draws through. */
 export type Draws = Pick<
@@ -68,6 +78,8 @@ export interface Played {
   tracks: Tracks;
   /** Game time, in seconds. */
   t: number;
+  /** The oddities, in the order the map places them: how far each is lifted now, a UFO by its bob. */
+  subjects: { readonly lift: Float64Array };
 }
 
 /** The levels of detail by `GROUND` number. */
@@ -231,10 +243,21 @@ class Tracked {
  */
 const THIN = { willow: 0.3, edge: 0.35 } as const;
 
+/**
+ * A placement's seed, from where it stands to a sixteenth of a unit: not its place in the world's list, which every
+ * placement laid before it moves, so the oddities once chose other willows to leave out across the whole world.
+ */
+function seedOf(p: Placement): number {
+  return Math.imul(Math.round(p.x * 16), 0x27d4eb2d) ^ Math.imul(Math.round(p.y * 16), 0x165667b1);
+}
+
 /** What the rover presses down as it drives through: bushes, ferns, flowers and reeds (review 3, 12). */
 const UNDERFOOT: ReadonlySet<Kind> = new Set<Kind>(['bush', 'fern', 'flowers', 'reed']);
 
-/** A placement's index hashed with `salt` to [0, 1): the same every time, so a choice made by it does not flicker. */
+/**
+ * A placement's seed (`seedOf`) hashed with `salt` to [0, 1): the same every time, so a choice made by it does not
+ * flicker.
+ */
 function hashOf(i: number, salt: number): number {
   let h = Math.imul(i ^ Math.imul(salt, 0x9e3779b1), 0x85ebca6b);
   h ^= h >>> 13;
@@ -284,6 +307,18 @@ export class Scene {
   /** This frame's ease toward cut and toward grown back, by what is wanted: nought cut, one whole. */
   private readonly eases = new Float64Array(2);
 
+  /**
+   * The oddities, every one of them drawn wherever it is, as what is built is: they are what the player is out to find
+   * and to photograph through a long lens, so none may vanish past the ring the scenery is drawn whole in, and a UFO
+   * hovering over a far hill is seen from across the world. A dozen, filled once; a UFO's matrices are lifted by its
+   * bob each frame from where it was laid, which `oddFoot` keeps, by its place among the oddities.
+   */
+  private readonly odd: KitBatch;
+  /** For each oddity, where it went in the pool's groups; and the height each of its groups' matrices was laid at. */
+  private readonly oddAt: Int32Array;
+  private readonly oddFoot: Float32Array;
+  /** One for each oddity that bobs, so only a UFO's groups are written again each frame. */
+  private readonly oddBobs: Uint8Array;
   /** The scenery's pools: the tall trees drawn whole, everything else drawn whole, the far trees, and what is built. */
   private readonly trees: KitBatch;
   private readonly kit: KitBatch;
@@ -309,6 +344,7 @@ export class Scene {
     built: 0,
     builtLow: 0,
     sails: 0,
+    odd: 0,
   };
   /** Each chunk's placements, as indices into the map's, from `chunkFirst[c]` to `chunkFirst[c + 1]` in `chunkOrder`. */
   private readonly chunkFirst: Int32Array;
@@ -322,6 +358,8 @@ export class Scene {
    * flickering behind the rover. Sized once; only the entries written are put back to one.
    */
   private readonly kept: Float64Array;
+  /** Each placement's seed, which what is thinned and dithered is chosen by: `seedOf`, made once. */
+  private readonly seeds: Int32Array;
   private readonly keptOf: Int32Array;
   private keptCount = 0;
   private readonly bushes: Tracked;
@@ -392,9 +430,17 @@ export class Scene {
       (k) => whole.get(k) ?? 1,
     );
     this.kit = new KitBatch(
-      KINDS.filter((k) => !TALL.has(k) && !BUILT.has(k)).flatMap((k) => kindPieces(k)),
+      KINDS.filter((k) => !TALL.has(k) && !BUILT.has(k) && !SUBJECT_KINDS.has(k)).flatMap((k) => kindPieces(k)),
       (k) => whole.get(k) ?? 1,
     );
+    const odds = map.placements.filter((p) => SUBJECT_KINDS.has(p.kind));
+    this.odd = new KitBatch(
+      KINDS.filter((k) => SUBJECT_KINDS.has(k)).flatMap((k) => kindPieces(k)),
+      (k) => total.get(k) ?? 1,
+    );
+    this.oddAt = new Int32Array(Math.max(1, odds.length));
+    this.oddFoot = new Float32Array(Math.max(1, odds.length * this.odd.groups.length));
+    this.oddBobs = Uint8Array.from(odds, (p) => (p.kind === 'ufo' ? 1 : 0));
     this.far = new KitBatch(farPieces(), (k) => total.get(k) ?? 1);
     // what is built is few, and drawn wherever it is, so the church tower is seen from across the world
     this.built = new KitBatch(
@@ -412,6 +458,7 @@ export class Scene {
     for (const k of UNDERFOOT) under += whole.get(k) ?? 0;
     this.bushes = new Tracked(under);
     this.kept = new Float64Array(map.placements.length).fill(1);
+    this.seeds = Int32Array.from(map.placements, seedOf);
     this.keptOf = new Int32Array(Math.max(1, most + under));
     let tallBuilt = 0;
     for (const p of map.placements) if (BUILT.has(p.kind) && tallness(p.kind) > 0) tallBuilt++;
@@ -562,12 +609,25 @@ export class Scene {
     dynamic.push(...this.builtLow.groups);
     this.base.sails = dynamic.length;
     if (this.mills.length) dynamic.push(...this.sails);
+    this.base.odd = dynamic.length;
+    let n = 0;
+    for (const p of map.placements) {
+      if (!SUBJECT_KINDS.has(p.kind)) continue;
+      this.odd.add(p);
+      this.oddAt[n] = this.odd.lastIndex;
+      // where each of its groups laid it, so a bob is added to that and never piles up
+      for (let i = 0; i < this.odd.groups.length; i++)
+        this.oddFoot[n * this.odd.groups.length + i] = this.odd.groups[i].matrices[this.oddAt[n] * 16 + 14];
+      n++;
+    }
+    dynamic.push(...this.odd.groups);
     dynamic.push(...pavingGroups(paving));
     dynamic.push(...waterGroups(waterMeshes(map, ground)));
     dynamic.push(...backdropGroups(backdropOf(map, ground)));
     draws.setDynamic(dynamic);
     this.handOver(this.built, this.base.built, true);
     this.handOver(this.builtLow, this.base.builtLow, true);
+    this.handOver(this.odd, this.base.odd, true);
 
     this.view.update(target[0], target[1]);
     this.groundAgain();
@@ -634,18 +694,19 @@ export class Scene {
       const draw = this.view.kit[c];
       if (draw === KIT.none) continue;
       for (let k = this.chunkFirst[c]; k < this.chunkFirst[c + 1]; k++) {
-        const i = this.chunkOrder[k];
+        const i = this.chunkOrder[k],
+          seed = this.seeds[i];
         const p = map.placements[i];
         if (BUILT.has(p.kind)) continue;
         // a share of the willows left out: the world sets them thick along the water, where they crowded it (review 3, 7)
-        if (p.kind === 'willow' && hashOf(i, 1) < THIN.willow) continue;
+        if (p.kind === 'willow' && hashOf(seed, 1) < THIN.willow) continue;
         const tall = TALL.has(p.kind);
         // the edge between the trees drawn whole and the far trees dithered a placement at a time, so it is not a band
         // (review 3, 9): a share of the ring past the whole one drawn whole, and a share of the whole one's edge far
         const ring = this.ringOf(c);
         let whole = draw === KIT.whole;
-        if (tall && whole && ring === RINGS.kit && hashOf(i, 2) < THIN.edge) whole = false;
-        else if (tall && !whole && ring === RINGS.kit + 1 && hashOf(i, 3) < THIN.edge) whole = true;
+        if (tall && whole && ring === RINGS.kit && hashOf(seed, 2) < THIN.edge) whole = false;
+        else if (tall && !whole && ring === RINGS.kit + 1 && hashOf(seed, 3) < THIN.edge) whole = true;
         if (!whole) {
           if (tall) far.add(p);
         } else if (tall) {
@@ -779,6 +840,7 @@ export class Scene {
     this.handOver(this.kit, this.base.kit, false);
 
     this.turnSails(game.t);
+    this.bob(game.subjects.lift);
     this.lay(game.tracks, game.t);
     this.press(game.rover);
   }
@@ -874,6 +936,26 @@ export class Scene {
       m[o + 15] = 1;
     }
     for (let i = 0; i < this.sails.length; i++) this.draws.move(this.base.sails + i, m);
+  }
+
+  /**
+   * Each UFO lifted by its bob from where it was laid, in every group that draws a part of it; a group with no part of
+   * a UFO in it has nothing written. Only the groups written are handed over, their live part as the fill left it.
+   */
+  private bob(lift: Float64Array) {
+    const odd = this.odd,
+      groups = odd.groups.length;
+    for (let k = 0; k < this.oddBobs.length; k++) {
+      if (!this.oddBobs[k]) continue;
+      for (let i = 0; i < groups; i++) {
+        const g = odd.groups[i];
+        // a group holds only its own kind's parts, so a UFO's place is filled only in the UFO's groups
+        if (odd.pieces[i].kind !== 'ufo' || this.oddAt[k] >= g.count!) continue;
+        g.matrices[this.oddAt[k] * 16 + 14] = this.oddFoot[k * groups + i] + lift[k];
+        odd.dirty[i] = 1;
+      }
+    }
+    this.handOver(odd, this.base.odd, false);
   }
 
   /**
@@ -1032,6 +1114,30 @@ export class Scene {
     const t = this.treesCut;
     let n = 0;
     for (let k = 0; k < t.count && n < out.length; k++) if (t.down[k]) out[n++] = t.of[k];
+    return n;
+  }
+
+  /**
+   * Where each oddity is drawn now, by its place among them: x, y, z of its first part's placement, into `out` (as many
+   * as fit); how many are drawn in all. For a test, which holds that every one is drawn wherever the camera is, and a
+   * UFO where its bob has lifted it.
+   */
+  drawnOddities(out: Float64Array): number {
+    const odd = this.odd;
+    let n = 0;
+    for (let k = 0; k < this.oddBobs.length && (n + 1) * 3 <= out.length; k++) {
+      // the first piece of its own look, since each look of a kind is drawn by groups of its own
+      const placed = this.map.placements.filter((p) => SUBJECT_KINDS.has(p.kind))[k];
+      const look = variantOf(placed);
+      const i = odd.pieces.findIndex((p) => p.kind === placed.kind && p.variant === look);
+      const g = odd.groups[i];
+      if (this.oddAt[k] >= g.count!) continue;
+      const o = this.oddAt[k] * 16;
+      out[n * 3] = g.matrices[o + 12];
+      out[n * 3 + 1] = g.matrices[o + 13];
+      out[n * 3 + 2] = g.matrices[o + 14];
+      n++;
+    }
     return n;
   }
 

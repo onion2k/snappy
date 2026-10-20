@@ -9,6 +9,8 @@
  * about, is never under the ground or inside anything built or rock, and
  * its line to where it looks never passes under the ground. Time is
  * finite. The save is in range: the volume from 0 to 1, the mute a boolean.
+ * The viewfinder is within its limits, and the last picture's grade is from
+ * nought to a hundred, its stars its total's and each term from nought to one.
  *
  * The game does not own the camera, the page does, so it is handed in by
  * whoever has one: the test API and the fuzzer. Read by the test API on
@@ -17,7 +19,9 @@
  */
 import { cameraProblems } from './camera';
 import type { Game } from './game';
+import { gradeProblems } from './score';
 import { TRACKS } from './tracks';
+import { viewfinderProblems } from './viewfinder';
 
 /** A camera to check, as much of one as the rules read. */
 export interface Viewed {
@@ -40,6 +44,8 @@ export function checkInvariants(game: Game, camera?: Viewed): string[] {
   if (camera) out.push(...cameraProblems(camera, ground));
 
   if (!Number.isFinite(game.t) || game.t < 0) out.push(`time is ${game.t}`);
+
+  out.push(...viewfinderProblems(game.viewfinder), ...gradeProblems(game.picture));
 
   const { muted, volume } = progress.save;
   if (typeof muted !== 'boolean') out.push(`the mute is ${String(muted)}, not a boolean`);

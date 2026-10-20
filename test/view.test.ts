@@ -258,10 +258,18 @@ describe('the frame-time rungs', () => {
     for (let k = 1; k < RUNG_STEPS.length; k++) {
       const a = RUNG_STEPS[k - 1],
         b = RUNG_STEPS[k];
-      expect(b.trees <= a.trees && b.grass <= a.grass && (a.finish || !b.finish)).toBe(true);
-      expect(b.trees < a.trees || b.grass < a.grass || b.finish !== a.finish).toBe(true);
+      expect(b.trees <= a.trees && b.grass <= a.grass && (a.finish || !b.finish) && (a.focus || !b.focus)).toBe(true);
+      expect(b.trees < a.trees || b.grass < a.grass || b.finish !== a.finish || b.focus !== a.focus).toBe(true);
     }
     expect(RUNG_STEPS[0].trees).toBe(RINGS.trees);
+  });
+
+  it('drops the viewfinder’s blur first, at the first rung down, and never has it back', () => {
+    expect(RUNG_STEPS[0].focus).toBe(true);
+    expect(RUNG_STEPS.slice(1).every((s) => !s.focus)).toBe(true);
+    // the first rung down gives up nothing else of the world's: the blur is the dearest thing in the viewfinder
+    expect(RUNG_STEPS[1].trees).toBe(RUNG_STEPS[0].trees);
+    expect(RUNG_STEPS[1].grass).toBe(RUNG_STEPS[0].grass);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it steps', () => {

@@ -33,6 +33,10 @@ export const FIXTURE = {
 
 export const FIXTURE_WATER = -1;
 
+/** Where the fixture's duck floats (on the pond's shallow rim) and its gnome stands (on grass), in tiles. */
+export const FIXTURE_DUCK: [number, number] = [4.5, 7.5];
+export const FIXTURE_GNOME: [number, number] = [20, 4];
+
 /** A lamp post's radius, in units: one stands north of the road, in the middle of the world. */
 export const LAMP_RADIUS = 0.6;
 
@@ -96,7 +100,13 @@ export function fixtureWorld(): WorldMap {
     return { kind, x, y, z: 0, yaw: 0, scale: 1, biome, vary: 0.5 };
   };
   const [cx, cy] = fixtureAt(F.cottage[0] + 0.5, F.cottage[1] + 0.5);
+  // an oddity of each kind that stands on the ground or the water: a duck on the pond's shallow rim, a gnome on the
+  // open grass south of the road
+  const [dx, dy] = fixtureAt(...FIXTURE_DUCK),
+    [gx, gy] = fixtureAt(...FIXTURE_GNOME);
   const placements: Placement[] = [
+    { kind: 'duck', x: dx, y: dy, z: FIXTURE_WATER, yaw: 0, scale: 1, biome: BIOME.meadow, vary: 0.5 },
+    { kind: 'gnome', x: gx, y: gy, z: 0, yaw: Math.PI / 2, scale: 1, biome: BIOME.meadow, vary: 0.5 },
     at(2, 2, 'broadleaf', BIOME.meadow),
     at(28, 2, 'conifer', BIOME.pine),
     at(2, 29, 'bush', BIOME.meadow),

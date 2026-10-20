@@ -30,10 +30,14 @@ export function watch(page: Page): string[] {
  * scripts run, and only on the first load, so a reload keeps what was
  * played), and ready. `seed` makes chance the same from before the game is
  * built, and `paused` stops it before a frame of its own has run, so
- * everything after is the test's own stepping.
+ * everything after is the test's own stepping. `rung` draws at a frame-time
+ * rung, as a slower machine steps down to.
  */
-export async function start(page: Page, options: { save?: Partial<Save>; seed?: number; paused?: boolean } = {}) {
-  const { save, seed, paused } = options;
+export async function start(
+  page: Page,
+  options: { save?: Partial<Save>; seed?: number; paused?: boolean; rung?: number } = {},
+) {
+  const { save, seed, paused, rung } = options;
   if (save)
     await page.addInitScript((s) => {
       if (sessionStorage.getItem('game-test-seeded')) return;
@@ -43,6 +47,7 @@ export async function start(page: Page, options: { save?: Partial<Save>; seed?: 
   const query = new URLSearchParams();
   if (seed !== undefined) query.set('seed', String(seed));
   if (paused) query.set('paused', '1');
+  if (rung !== undefined) query.set('rung', String(rung));
   await page.goto(query.size ? `/?${query.toString()}` : '/');
   await ready(page);
 }

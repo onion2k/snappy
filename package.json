@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "artshape-physics": "github:onion2k/artshape-physics#v0.8.0",
-    "artshape-render": "github:onion2k/artshape-render#v0.46.0",
+    "artshape-render": "github:onion2k/artshape-render#v0.47.0",
     "artshape-sound": "github:onion2k/artshape-sound#v0.2.0"
   },
   "devDependencies": {

@@ -67,6 +67,10 @@ export const KINDS = [
   'windmill',
   /** A standing stone, one of a ring. */
   'menhir',
+  /** The oddities, what the player photographs: see `SUBJECTS`. */
+  'duck',
+  'gnome',
+  'ufo',
   'cottage',
   'church',
   'well',
@@ -116,6 +120,57 @@ export interface Placement {
  * brush them, so they are kept off its routes rather than walled in.
  */
 export const PROPS: ReadonlySet<Kind> = new Set<Kind>(['stepping', 'post', 'signpost', 'bench', 'lamp', 'lily']);
+
+/**
+ * The oddities: what the player is out to photograph. Each is placed by the world like any other thing, and read by
+ * the grade through this table: its name on the card and the brackets; how far out it reaches from its middle and
+ * how tall it stands, in units, at a scale of one (its bounds for the grade's sums); how high over the ground or the
+ * water its foot is (a UFO hovers); whether it has a front to face the lens, along its placement's +x; and the looks
+ * it comes in, and how many paints each look comes in, which its placement's `vary` chooses (`lookOf`, `paintOf`).
+ */
+export const SUBJECTS = {
+  duck: {
+    name: 'rubber duck',
+    radius: 1.3,
+    height: 2.4,
+    hover: 0,
+    front: true,
+    looks: ['yellow', 'black', 'top hat'],
+    paints: 1,
+  },
+  gnome: {
+    name: 'garden gnome',
+    radius: 1.6,
+    height: 5,
+    hover: 0,
+    front: true,
+    looks: ['fishing', 'lantern', 'asleep', 'barrow', 'waving'],
+    paints: 5,
+  },
+  // low enough that the chase camera, whose view stops about twenty degrees under the horizon, finds the saucer from
+  // five metres or so and its beam and the pool of light under it from farther off; at sixty it was over the top of
+  // the frame until the rover was under it (review 5). The world sets them a quarter bigger, 3.5 m over the ground
+  ufo: { name: 'UFO', radius: 15, height: 7, hover: 28, front: false, looks: ['saucer'], paints: 1 },
+} as const;
+export type SubjectKind = keyof typeof SUBJECTS;
+export const SUBJECT_KINDS: ReadonlySet<Kind> = new Set<Kind>(Object.keys(SUBJECTS) as SubjectKind[]);
+
+/**
+ * Which of its kind's `looks` an oddity is, by its `vary`: a gnome's pose and what he holds, a duck's colour or hat.
+ * The world sets each oddity's `vary` in the share of nought to one that its look takes, so the look is the world's
+ * choice and the same every game; and within that share, in the part of it its paint takes (`paintOf`).
+ */
+export function lookOf(kind: SubjectKind, vary: number): number {
+  const n = SUBJECTS[kind].looks.length;
+  return Math.max(0, Math.min(n - 1, Math.floor(vary * n)));
+}
+
+/** Which of its kind's `paints` an oddity is in, by its `vary`, within its look's share: a gnome's hat and coat. */
+export function paintOf(kind: SubjectKind, vary: number): number {
+  const n = SUBJECTS[kind].looks.length,
+    m = SUBJECTS[kind].paints;
+  return Math.max(0, Math.min(m - 1, Math.floor((vary * n - lookOf(kind, vary)) * m)));
+}
 
 /** A paved place, the village square or a ruin's floor, as its outline: x, y pairs, anticlockwise, in units. */
 export interface Plaza {

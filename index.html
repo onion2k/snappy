@@ -86,9 +86,478 @@
   #boot p {
     color: var(--dim);
   }
+  /* ---- the viewfinder: what the lens sees, and the camera's marks over it ---- */
+  :root {
+    --mark: rgba(255, 255, 255, 0.9);
+    --dimmark: rgba(255, 255, 255, 0.55);
+    --sharp: #ffd23f;
+  }
+  #vf {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    /* the lens's own falloff at the corners, over the renderer's, so the frame reads as looked through */
+    background: radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.42) 100%);
+  }
+  #vf .edge {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    border: 0 solid var(--mark);
+  }
+  #vf .edge.tl {
+    top: 22px;
+    left: 22px;
+    border-top-width: 2px;
+    border-left-width: 2px;
+  }
+  #vf .edge.tr {
+    top: 22px;
+    right: 22px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+  }
+  #vf .edge.bl {
+    bottom: 22px;
+    left: 22px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+  }
+  #vf .edge.br {
+    bottom: 22px;
+    right: 22px;
+    border-bottom-width: 2px;
+    border-right-width: 2px;
+  }
+  /* the thirds, faint, as a camera's grid: where the placement term is best */
+  #vf .thirds {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        to right,
+        transparent calc(33.333% - 0.5px),
+        rgba(255, 255, 255, 0.16) 0,
+        rgba(255, 255, 255, 0.16) calc(33.333% + 0.5px),
+        transparent 0,
+        transparent calc(66.667% - 0.5px),
+        rgba(255, 255, 255, 0.16) 0,
+        rgba(255, 255, 255, 0.16) calc(66.667% + 0.5px),
+        transparent 0
+      ),
+      linear-gradient(
+        to bottom,
+        transparent calc(33.333% - 0.5px),
+        rgba(255, 255, 255, 0.16) 0,
+        rgba(255, 255, 255, 0.16) calc(33.333% + 0.5px),
+        transparent 0,
+        transparent calc(66.667% - 0.5px),
+        rgba(255, 255, 255, 0.16) 0,
+        rgba(255, 255, 255, 0.16) calc(66.667% + 0.5px),
+        transparent 0
+      );
+  }
+  .bracket {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: none;
+    --c: var(--dimmark);
+  }
+  .bracket.sharp {
+    --c: var(--sharp);
+  }
+  .bracket i {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 0 solid var(--c);
+    filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55));
+  }
+  .bracket i:nth-child(1) {
+    left: -3px;
+    top: -3px;
+    border-top-width: 2.5px;
+    border-left-width: 2.5px;
+  }
+  .bracket i:nth-child(2) {
+    right: -3px;
+    top: -3px;
+    border-top-width: 2.5px;
+    border-right-width: 2.5px;
+  }
+  .bracket i:nth-child(3) {
+    left: -3px;
+    bottom: -3px;
+    border-bottom-width: 2.5px;
+    border-left-width: 2.5px;
+  }
+  .bracket i:nth-child(4) {
+    right: -3px;
+    bottom: -3px;
+    border-bottom-width: 2.5px;
+    border-right-width: 2.5px;
+  }
+  .bracket b {
+    position: absolute;
+    left: -3px;
+    bottom: calc(100% + 8px);
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #15131c;
+    background: var(--c);
+    border-radius: 4px;
+    padding: 1px 7px;
+  }
+  #focusMark {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 30px;
+    height: 30px;
+    margin: -15px 0 0 -15px;
+    border: 1.5px solid var(--mark);
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  }
+  #focusMark::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    border-radius: 50%;
+    background: var(--mark);
+  }
+  #focusMark.sharp {
+    border-color: var(--sharp);
+  }
+  #focusMark.sharp::after {
+    background: var(--sharp);
+  }
+  #vfInfo {
+    position: absolute;
+    top: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+    font:
+      600 13px/1 ui-monospace,
+      'SF Mono',
+      Menlo,
+      monospace;
+    letter-spacing: 0.06em;
+    color: var(--mark);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+  #vfMode {
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+    padding: 3px 6px 2px;
+  }
+  #vfMode.manual {
+    color: var(--sharp);
+  }
+  #flash {
+    position: fixed;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #flash.go {
+    animation: flash 0.32s ease-out;
+  }
+  @keyframes flash {
+    from {
+      opacity: 0.9;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  /* the grade, on a print: what the picture earned and what made it */
+  #card {
+    position: fixed;
+    top: 66px;
+    left: 50%;
+    width: 248px;
+    margin-left: -124px;
+    padding: 12px 14px 12px;
+    background: #fbf8f1;
+    color: #26232d;
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    transform: rotate(-1.5deg);
+    pointer-events: none;
+    animation: deal 0.28s ease-out;
+  }
+  @keyframes deal {
+    from {
+      transform: translateY(-14px) rotate(-4deg);
+      opacity: 0;
+    }
+  }
+  #card .head {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  #cardTotal {
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  #card .of {
+    color: #8a8592;
+    font-size: 14px;
+  }
+  #cardStars {
+    margin-left: auto;
+    font-size: 22px;
+    color: #e8a21c;
+    letter-spacing: 2px;
+  }
+  #cardName {
+    margin: 2px 0 8px;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  #cardTerms {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 8px;
+    align-items: center;
+    font-size: 11px;
+    color: #67626f;
+  }
+  #cardTerms s {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: #e7e2d8;
+    text-decoration: none;
+    overflow: hidden;
+  }
+  #cardTerms s u {
+    display: block;
+    height: 100%;
+    background: #4f9d69;
+    transform-origin: left;
+  }
+  #cardTerms s u.low {
+    background: #d8644a;
+  }
+  /* the camera's buttons: the camera itself always, and in the viewfinder the shutter and auto focus */
+  .round {
+    position: fixed;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    background: rgba(14, 12, 20, 0.55);
+    color: #fff;
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    padding: 0;
+    font:
+      700 14px/1 ui-rounded,
+      'SF Pro Rounded',
+      system-ui,
+      sans-serif;
+  }
+  /* a button's own display would otherwise show it when hidden */
+  .round[hidden] {
+    display: none;
+  }
+  #cameraBtn {
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  body.photo #cameraBtn {
+    background: rgba(255, 255, 255, 0.9);
+    color: #15131c;
+  }
+  #shutterBtn {
+    right: calc(24px + env(safe-area-inset-right, 0px));
+    top: 50%;
+    width: 76px;
+    height: 76px;
+    margin-top: -38px;
+    border: 4px solid #fff;
+    background: rgba(255, 255, 255, 0.25);
+  }
+  #shutterBtn::after {
+    content: '';
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.08s;
+  }
+  #shutterBtn:active::after {
+    transform: scale(0.88);
+  }
+  #afBtn {
+    right: calc(34px + env(safe-area-inset-right, 0px));
+    top: calc(50% - 112px);
+  }
+  #afBtn.manual {
+    color: var(--sharp);
+    border-color: var(--sharp);
+  }
+  #vfHelp {
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    color: var(--dim);
+    font-size: 13px;
+  }
+  #vfHelp kbd {
+    font: inherit;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    padding: 0 6px;
+  }
+  /* in the viewfinder the thumb stick is put away, there being no driving while the player looks; and the frame
+     time, so nothing but the camera's own marks is over the picture */
+  body.photo .stick,
+  body.photo #stats {
+    display: none !important;
+  }
+  /* the iris: closed to black and opened again as the viewfinder is raised or lowered */
+  @property --iris {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 150%;
+  }
+  #iris {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at center, transparent var(--iris), #050407 calc(var(--iris) + 1%));
+  }
+  #iris.go {
+    animation: iris 0.22s ease-out;
+  }
+  @keyframes iris {
+    from {
+      --iris: 0%;
+    }
+    to {
+      --iris: 100%;
+    }
+  }
+  /* auto focus locking, or a tap setting it: the mark closes in once */
+  #focusMark.pulse {
+    animation: afpulse 0.24s ease-out;
+  }
+  @keyframes afpulse {
+    from {
+      scale: 1.7;
+      opacity: 0.4;
+    }
+  }
+  /* the print: the picture as taken, on the card's white */
+  #cardPrint {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    margin-bottom: 8px;
+    border-radius: 2px;
+    background: #222;
+  }
+  #cardWords {
+    margin: -6px 0 8px;
+    font-size: 12px;
+    color: #4d4855;
+  }
+  #vfHelp .touch {
+    display: none;
+  }
+  @media (pointer: coarse) {
+    #vfHelp .keys {
+      display: none;
+    }
+    #vfHelp .touch {
+      display: inline;
+    }
+  }
   @media (max-width: 600px) {
+    /* a smaller card along the bottom edge, clear of the shutter and the subject: the print beside the numbers */
+    #card {
+      top: auto;
+      bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+      left: 12px;
+      right: 104px;
+      width: auto;
+      margin-left: 0;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      column-gap: 10px;
+      transform: none;
+    }
+    #cardPrint {
+      grid-row: span 3;
+      margin: 0;
+      align-self: center;
+    }
+    #cardTotal {
+      font-size: 28px;
+    }
+    #cardStars {
+      font-size: 16px;
+    }
+    #cardName {
+      margin: 0;
+      font-size: 13px;
+    }
+    #cardWords {
+      margin: 0;
+      font-size: 11px;
+    }
+    #cardTerms {
+      display: none;
+    }
+    /* the card stands where the help line does, and the help gives way to it while it shows */
+    #card:not([hidden]) ~ #vfHelp {
+      visibility: hidden;
+    }
     #stats {
       display: none;
+    }
+    #vfHelp {
+      left: 16px;
+      right: 88px;
+      transform: none;
+      white-space: normal;
+    }
+    #shutterBtn {
+      top: auto;
+      bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+      right: calc(16px + env(safe-area-inset-right, 0px));
+      margin-top: 0;
+    }
+    #afBtn {
+      top: auto;
+      bottom: calc(188px + env(safe-area-inset-bottom, 0px));
+      right: calc(26px + env(safe-area-inset-right, 0px));
     }
     /* the help line stays on a narrow screen, held inside it and wrapping rather than running off the edge */
     #help {
@@ -98,10 +567,61 @@
 </style>
 <div id="stage"><canvas id="view"></canvas></div>
 <div class="panel" id="stats" hidden></div>
+<div id="vf" hidden>
+  <div class="thirds"></div>
+  <div class="edge tl"></div>
+  <div class="edge tr"></div>
+  <div class="edge bl"></div>
+  <div class="edge br"></div>
+  <div id="brackets"></div>
+  <div id="focusMark"></div>
+  <div id="vfInfo"><span id="vfMode">AF</span><span id="vfLens">50 mm</span></div>
+</div>
+<div id="flash"></div>
+<div id="iris"></div>
+<div id="card" hidden>
+  <canvas id="cardPrint" width="240" height="150"></canvas>
+  <div class="head"><span id="cardTotal">0</span><span class="of">/ 100</span><span id="cardStars"></span></div>
+  <div id="cardName"></div>
+  <div id="cardWords"></div>
+  <div id="cardTerms"></div>
+</div>
 <div class="panel" id="help" hidden>
   <span>WASD</span> or arrows to drive · drag or <span>Q</span> <span>E</span> to look around · wheel to zoom ·
-  <span>M</span> mute
+  <span>F</span> camera · <span>M</span> mute
 </div>
+<div class="panel" id="vfHelp" hidden>
+  <span class="keys"
+    >drag to look · click to focus · <kbd>A</kbd> auto · <kbd>Space</kbd> shutter · <kbd>F</kbd> back</span
+  >
+  <span class="touch">drag to look · pinch to zoom · tap to focus · <kbd>AF</kbd> auto</span>
+</div>
+<button class="round" id="cameraBtn" type="button" tabindex="-1" aria-label="Camera" title="Camera (F)" hidden>
+  <svg
+    width="28"
+    height="28"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linejoin="round"
+  >
+    <path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" />
+    <circle cx="12" cy="13.2" r="3.4" />
+  </svg>
+</button>
+<button class="round" id="afBtn" type="button" tabindex="-1" aria-label="Auto focus" title="Auto focus (A)" hidden>
+  AF
+</button>
+<button
+  class="round"
+  id="shutterBtn"
+  type="button"
+  tabindex="-1"
+  aria-label="Take the picture"
+  title="Shutter (Space)"
+  hidden
+></button>
 <div id="boot">
   <p id="bootMsg">starting WebGPU…</p>
 </div>

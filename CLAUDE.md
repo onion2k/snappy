@@ -10,8 +10,12 @@ rules in `~/.claude/CLAUDE.md` apply too. What is in `src/` now is the world
 and the player: a landscape about 190 m across in golf's toon daylight (a
 river with fords, a lake, a village, ruins, five biomes), and a six-wheeled
 rover driven about it in third person (features 1 and 2 of `docs/plan.md`,
-specified in `docs/specs/landscape-rover.md`). Nothing is pictured yet: the
-camera, the shutter and the album are the next features.
+specified in `docs/specs/landscape-rover.md`), and the photo mode
+(`docs/specs/photo.md`): a dozen oddities placed about the world (rubber
+ducks, garden gnomes, two UFOs), a first-person viewfinder with a lens, a
+focus drawn by artshape-render's depth of field, brackets round what is worth
+a picture, and a shutter that grades the picture and throws it away. The
+album is the next feature.
 
 ## The factory
 
@@ -95,15 +99,23 @@ machine is at other work fails every run after it.
 ## How the code is laid out
 
 - `src/game.ts` is the game without the picture: the world, the rover and
-  its tracks, the clock, a step at a time, driven by a `Drive`. It knows
-  nothing of the renderer or the page. Nothing happens in it yet that it
-  tells of; the first thing that does (a picture taken) adds `GameEvents`.
+  its tracks, the clock, the viewfinder and the shutter, a step at a time,
+  driven by a `Drive`. It knows nothing of the renderer or the page, and
+  tells of a picture taken through `GameEvents`.
+- The photo mode's logic: `src/viewfinder.ts` the lens (look, focal length,
+  focus, auto focus), `src/sight.ts` the oddities as the lens reads them and
+  a ray over the ground, rock, what is built, the trees and the oddities,
+  `src/score.ts` the grade (eight terms, nought to one, multiplied, and the
+  card's line from `critique`), and `src/brackets.ts` what is bracketed. All
+  of it from geometry, never from pixels, and allocating nothing a frame.
 - `src/world/` is the world, made once from content and the same every
   game: `types.ts` is the contract every other module reads it by
   (`WorldMap`, `Ground`, `DRIVE`, the kinds), `drive.ts` the one rule of
   where the rover can go, `ground.ts` the ground read off a map,
   `generate.ts` the world itself from the hand-laid `layout.ts`, and
-  `graph.ts` the drive graph, reachability and routes. `fixture.ts` is a
+  `graph.ts` the drive graph, reachability and routes. `oddities.ts`
+  lays the oddities, each with its look and paint in its `vary`, and a
+  UFO's bob. `fixture.ts` is a
   small world made by hand for the tests.
 - `src/rover.ts` is the rover (skid steer, rocker-bogie, its head),
   `src/tracks.ts` its tracks, `src/camera.ts` the chase camera,
@@ -111,7 +123,8 @@ machine is at other work fails every run after it.
   and `src/touch.ts` the keys and the thumb stick: all logic, handed a
   `Ground`, and none of it drawn.
 - `src/main.ts` is the page: input, the camera, the frame. There is no game
-  logic here. `src/scene.ts` is what is drawn, a chunk at a time round the
+  logic here, and `src/hud.ts` the viewfinder's marks and the card, drawn
+  from what the game says. `src/scene.ts` is what is drawn, a chunk at a time round the
   camera, from the models in `src/models/`; `src/view.ts` is its testable
   logic (which chunks at what detail, what is cut out of the sight line,
   the rung). `preview.html` and `src/preview.ts` are a page for working on
@@ -160,7 +173,9 @@ What to copy the shape of, when building something new:
 
 ## What the renderer cannot do yet
 
-artshape-render 0.45 has no fade or alpha per placement, no outline or rim
+The depth of field is artshape-render's own (`Post.focus`, from 0.47.0),
+asked for only in the viewfinder, and dropped by the first rung down.
+artshape-render 0.47 has no fade or alpha per placement, no outline or rim
 light per group, and no shadow softness per group. So a tree cut from the
 camera's sight line is swapped for a low variant rather than faded, and its
 crown's shadow goes with it. A change for any of these goes in that repo,
@@ -246,7 +261,9 @@ with `pause`, `resume`, `seed`, `teleport`, `drive` and `release`, plays it
 with `step(frames)`, and reads it back with `state` (`t`, `frame`,
 `paused`), `rover`, `camera`, `ground(x, y)`, `events`, `invariants` (the
 camera's rules among them), `content` (the bounds, the start, the
-landmarks) and `save`. `zoom` and `orbit` work the chase camera as the
+landmarks) and `save`. The viewfinder is `photo(on)`, `aim`, `lens`,
+`focusAt`, `autoFocus` and `shutter`, read back by `viewfinder` and
+`oddities`, and a picture taken is told in `events`. `zoom` and `orbit` work the chase camera as the
 wheel, a drag and Q and E do (`camera()` reads its azimuth, tilt and how far
 it is turned), and `look` aims it by hand. `mute`, `wake` (the first gesture) and `sound` work the sound, and
 `measureFrame` and `bootMs` are the perf gate's. Unit tests get a game without a page from
@@ -273,6 +290,9 @@ Said so that a green `npm run check` is not read as more than it holds.
   about 3.2 ms, boot about 200 ms longer); that is some 2.4 million
   vertices, on the order of 70 MB, which a phone may not have.
 - **Moving pictures.** `look` is still scenes; motion is seen by a person.
+- **Whether a grade is fair.** The grade's terms and its tuning are held by
+  representative shots in `test/photo-grades.test.ts`; whether the stars
+  feel earned is a person's call.
 - **The world's generator and the mesh builders, by mutation.** `mutate`
   leaves out `src/world/` (but for the drive rule and the ground) and
   `src/models/` (but for the clouds' motion): a full run over them was on

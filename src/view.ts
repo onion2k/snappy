@@ -281,15 +281,17 @@ export const LOOM = 0.4;
 
 /**
  * The frame-time rungs a slower machine steps down, one at a time, while its frames run long (review 1, 21): first the
+ * viewfinder's depth of field (photo review, 9: the dearest thing in the viewfinder, and nothing outside it), then the
  * far trees drawn out to fewer chunks, then the grass thinned, then the far trees' ring cut to the ring drawn whole and
  * the contact shade and the antialiasing given up. Each rung says what it draws: how many chunks out the far trees go,
- * how dense the grass is, and whether the occlusion and the antialiasing are kept.
+ * how dense the grass is, whether the occlusion and the antialiasing are kept, and whether the viewfinder blurs.
  */
 export const RUNG_STEPS = [
-  { trees: RINGS.trees, grass: 1, finish: true },
-  { trees: 4, grass: 1, finish: true },
-  { trees: 4, grass: 0.6, finish: true },
-  { trees: RINGS.kit, grass: 0.45, finish: false },
+  { trees: RINGS.trees, grass: 1, finish: true, focus: true },
+  { trees: RINGS.trees, grass: 1, finish: true, focus: false },
+  { trees: 4, grass: 1, finish: true, focus: false },
+  { trees: 4, grass: 0.6, finish: true, focus: false },
+  { trees: RINGS.kit, grass: 0.45, finish: false, focus: false },
 ] as const;
 
 /**

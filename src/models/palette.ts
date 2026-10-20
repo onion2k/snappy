@@ -147,3 +147,65 @@ export const BUILT_COLOURS = {
   roofs: [shown(0.84, 0.32, 0.22), shown(0.4, 0.44, 0.52), shown(0.84, 0.66, 0.36)] as readonly Rgb[],
   water: shown(0.12, 0.36, 0.62),
 } as const;
+
+/**
+ * The oddities' colours, chosen to stand out of a green and brown world at the chase camera's distance: the rubber
+ * duck's warm egg-yolk yellow (a lemon one read as a flower) and its orange bill; the gnome's pillar-box hat, cornflower
+ * coat, snow-white beard and pink skin; and the saucer's pale chrome, its darker band, its tinted glass, and its lights
+ * at full saturation, as near to giving light as a toon colour goes.
+ */
+export const ODDITY_COLOURS = {
+  duck: shown(1, 0.82, 0.1),
+  duckWing: shown(1, 0.74, 0.08),
+  beak: shown(1, 0.46, 0.08),
+  eye: shown(0.06, 0.06, 0.08),
+  white: shown(1, 1, 1),
+  boot: shown(0.42, 0.26, 0.16),
+  coat: shown(0.2, 0.42, 0.86),
+  belt: shown(0.14, 0.12, 0.12),
+  gold: shown(0.98, 0.8, 0.26),
+  skin: shown(0.98, 0.76, 0.64),
+  cheek: shown(0.96, 0.5, 0.5),
+  beard: shown(0.98, 0.97, 0.94),
+  hat: shown(0.9, 0.12, 0.1),
+  rod: shown(0.56, 0.38, 0.2),
+  line: shown(0.9, 0.9, 0.86),
+  hull: shown(0.8, 0.83, 0.88),
+  band: shown(0.44, 0.47, 0.54),
+  belly: shown(0.76, 0.8, 0.88),
+  glass: shown(0.44, 0.86, 0.84),
+  lightA: shown(1, 0.2, 0.36),
+  lightB: shown(1, 0.86, 0.16),
+  lightC: shown(0.2, 0.9, 1),
+  glow: shown(0.74, 1, 0.5),
+  alien: shown(0.4, 0.95, 0.3),
+  // the odd ones out: a black rubber duck (a blue-black, so its shape still reads in the shade) with white eyes, and a
+  // top hat with a red band
+  ink: shown(0.13, 0.13, 0.17),
+  inkWing: shown(0.2, 0.2, 0.25),
+  topHat: shown(0.12, 0.11, 0.13),
+  hatBand: shown(0.86, 0.14, 0.16),
+  // the gnomes' hats and coats, in pairs by place in the lists: the pillar-box and cornflower first, then the rest
+  hats: [
+    shown(0.9, 0.12, 0.1),
+    shown(0.2, 0.62, 0.26),
+    shown(0.98, 0.62, 0.1),
+    shown(0.62, 0.24, 0.72),
+    shown(0.22, 0.4, 0.9),
+  ] as readonly Rgb[],
+  coats: [
+    shown(0.2, 0.42, 0.86),
+    shown(0.86, 0.2, 0.16),
+    shown(0.18, 0.56, 0.5),
+    shown(0.96, 0.78, 0.18),
+    shown(0.94, 0.42, 0.6),
+  ] as readonly Rgb[],
+  // what they hold: a lantern of black iron with warm glass, a green barrow on a black tyre, and red apples in it
+  iron: shown(0.16, 0.16, 0.18),
+  lamp: shown(1, 0.9, 0.46),
+  barrow: shown(0.3, 0.64, 0.36),
+  tyre: shown(0.18, 0.18, 0.2),
+  apple: shown(0.9, 0.16, 0.12),
+  // the saucer's underside, a paler metal than its band so it is not a grey plate against the sky, and its beam
+  beam: shown(0.86, 1, 0.72),
+} as const;

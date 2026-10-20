@@ -9,6 +9,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { start, watch } from './game';
+import { aimAt } from './views';
 
 /** Play `frames` frames, and check nothing that must hold has broken. */
 async function play(page: Page, frames: number, stage: string) {
@@ -73,5 +74,37 @@ test('600 frames of the world pass with the music playing and no rule broken', a
   const sound = await page.evaluate(() => window.game!.sound());
   expect(sound.beat, 'the music has played, on game time: 90 beats a minute').toBeCloseTo(15, 6);
   expect(sound.voices, 'the music is sounding').toBeGreaterThanOrEqual(1);
+  expect(problems).toEqual([]);
+});
+
+test('the rover drives to the mill pond, and the duck there is photographed well', async ({ page }) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  const duck = await page.evaluate(() => window.game!.oddities().find((o) => o.name === 'mill pond duck')!);
+  // forty units out from it along the way it faces, turned to it, and driven twenty units toward it
+  await page.evaluate(
+    ([x, y, yaw]) => window.game!.teleport(x + Math.cos(yaw) * 40, y + Math.sin(yaw) * 40, yaw + Math.PI),
+    [duck.x, duck.y, duck.yaw],
+  );
+  await page.evaluate(() => window.game!.drive(1, 0));
+  await play(page, 25, 'the drive to the pond');
+  await page.evaluate(() => window.game!.release());
+  await play(page, 60, 'stopping');
+  // the viewfinder raised, the duck put on a third through a short telephoto, auto focus left to find it
+  await aimAt(page, 'mill pond duck', 70, -1 / 3, -1 / 4);
+  const vf = await page.evaluate(() => window.game!.viewfinder());
+  expect(vf.framed.map((f) => f.name)).toContain('mill pond duck');
+  expect(vf.framed.find((f) => f.name === 'mill pond duck')!.sharp, 'in focus').toBe(true);
+  const grade = (await page.evaluate(() => window.game!.shutter()))!;
+  expect(grade.name).toBe('mill pond duck');
+  expect(grade.total, JSON.stringify(grade.terms)).toBeGreaterThan(40);
+  expect(grade.stars).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('#card')).toBeVisible();
+  await expect(page.locator('#cardTotal')).toHaveText(String(grade.total));
+  const broken = await page.evaluate(() => window.game!.invariants());
+  expect(broken, 'invariants after the picture').toEqual([]);
+  // nothing of it kept: the save is as it was
+  const save = JSON.parse(await page.evaluate(() => window.game!.save())) as Record<string, unknown>;
+  expect(Object.keys(save).sort()).toEqual(['muted', 'volume']);
   expect(problems).toEqual([]);
 });

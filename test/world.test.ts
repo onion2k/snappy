@@ -53,10 +53,30 @@ import {
 } from '../src/world/layout';
 import { area2, inside } from '../src/world/plaza';
 import { fordIndices, RIVER_LINE } from '../src/world/relief';
-import { BIOME, BIOMES, BUILT, DRIVE, KINDS, PROPS, SURFACE, TILE, type Kind } from '../src/world/types';
+import { BOB, ODDITIES } from '../src/world/oddities';
+import { HEAD } from '../src/rover';
+import { SUN } from '../src/sun';
+import { variantOf } from '../src/models/kit';
+import { BEAM } from '../src/models/oddities';
+import {
+  BIOME,
+  BIOMES,
+  BUILT,
+  DRIVE,
+  KINDS,
+  PROPS,
+  SUBJECT_KINDS,
+  SUBJECTS,
+  SURFACE,
+  paintOf,
+  TILE,
+  type Kind,
+  type Placement,
+  type SubjectKind,
+} from '../src/world/types';
 
 /** The world's hash, pinned: a change that moves it is a change to the world, and says so here. */
-const HASH = '7a1f80bb';
+const HASH = '943d165d';
 
 const { map, stats } = generate();
 const g = groundOf(map);
@@ -508,7 +528,7 @@ describe('the placements', () => {
       if (BUILT.has(p.kind)) continue;
       const t = tileAt(map, p.x, p.y);
       const depth = g.waterDepthAt(p.x, p.y);
-      if (p.kind === 'stepping' || p.kind === 'lily') {
+      if (p.kind === 'stepping' || p.kind === 'lily' || p.kind === 'duck') {
         if (depth <= 0 || depth > DRIVE.shallow) expect.fail(`${p.kind} not in shallow water at ${p.x},${p.y}`);
       } else if (depth > 0) expect.fail(`${p.kind} in water at ${p.x},${p.y}`);
       if (roadTiles[t]) expect.fail(`${p.kind} on a road at ${p.x},${p.y}`);
@@ -516,12 +536,14 @@ describe('the placements', () => {
     }
   });
 
-  it('stands everything on the ground, in the world, sized and turned within reason', () => {
+  it('stands everything on the ground, a duck on the water and a UFO over the ground, in the world, sized and turned within reason', () => {
     for (const p of map.placements) {
-      expect(p.z).toBe(g.heightAt(p.x, p.y));
+      const floor = p.kind === 'duck' ? map.waterLevel : g.heightAt(p.x, p.y);
+      expect(p.z, p.kind).toBe(p.kind === 'ufo' ? floor + SUBJECTS.ufo.hover * p.scale : floor);
       expect(tileAt(map, p.x, p.y)).toBeGreaterThanOrEqual(0);
       expect(p.scale).toBeGreaterThan(0.4);
-      expect(p.scale).toBeLessThan(2);
+      // the Mere's giant duck the one thing bigger
+      expect(p.scale).toBeLessThan(p.kind === 'duck' ? 4.5 : 2);
       expect(p.vary).toBeGreaterThanOrEqual(0);
       expect(p.vary).toBeLessThan(1);
       expect(Number.isFinite(p.yaw)).toBe(true);
@@ -589,9 +611,9 @@ describe('the placements', () => {
 });
 
 describe('the small solid things', () => {
-  const solidKinds: Kind[] = ['lamp', 'signpost', 'bench'];
+  const solidKinds: Kind[] = ['lamp', 'signpost', 'bench', 'gnome'];
 
-  it('makes every lamp, signpost and bench an obstacle the rover cannot stand in, and nothing else one', () => {
+  it('makes every lamp, signpost, bench and gnome an obstacle the rover cannot stand in, and nothing else one', () => {
     const solidOnes = map.placements.filter((p) => solidKinds.includes(p.kind));
     expect(solidOnes.length).toBeGreaterThanOrEqual(10);
     const circles = map.obstacles.length / 3;
@@ -799,6 +821,200 @@ describe('the plazas and what stands on the solid ground', () => {
           expect.fail(`a lone tile of ${s} at ${tx},${ty}`);
       }
   });
+});
+
+describe('the oddities', () => {
+  const odd = map.placements.filter((p) => SUBJECT_KINDS.has(p.kind));
+  /** The oddity of each name, which the world places in the table's order. */
+  const named = ODDITIES.map((o, k) => ({ ...o, p: odd[k] }));
+  const of = (kind: SubjectKind) => named.filter((o) => o.kind === kind);
+
+  it('places twelve, each named once: five ducks, five gnomes and two UFOs, where the table lays them', () => {
+    expect(odd.length).toBe(12);
+    expect(new Set(ODDITIES.map((o) => o.name)).size).toBe(12);
+    expect(of('duck').length).toBe(5);
+    expect(of('gnome').length).toBe(5);
+    expect(of('ufo').length).toBe(2);
+    for (const o of named) {
+      const u = units(o.x, o.y);
+      expect(o.p.kind, o.name).toBe(o.kind);
+      expect(o.p.x, o.name).toBe(u.x);
+      expect(o.p.y, o.name).toBe(u.y);
+      expect(o.p.yaw, o.name).toBe(o.yaw);
+      expect(o.p.scale, o.name).toBe(o.scale);
+    }
+  });
+
+  it('floats every duck on still shallow water, at its level, well off the river', () => {
+    for (const { name, p } of of('duck')) {
+      expect(p.z, name).toBe(map.waterLevel);
+      const depth = g.waterDepthAt(p.x, p.y);
+      expect(depth, name).toBeGreaterThan(0.1);
+      expect(depth, name).toBeLessThanOrEqual(DRIVE.shallow);
+      for (let i = 0; i < RIVER_LINE.length; i += 2) {
+        const r = at(RIVER_LINE[i], RIVER_LINE[i + 1]);
+        expect(Math.hypot(r.x - p.x, r.y - p.y), `${name} by the river`).toBeGreaterThan(10 * TILE);
+      }
+      expect(g.solidAt(p.x, p.y), name).toBe(false);
+    }
+  });
+
+  it('stands every gnome on open dry ground off the roads, an obstacle with open ground on its four sides', () => {
+    for (const { name, p } of of('gnome')) {
+      const t = tileAt(map, p.x, p.y);
+      expect(g.waterDepthAt(p.x, p.y), name).toBe(0);
+      expect(map.solid[t], name).toBe(0);
+      expect(map.surface[t], name).not.toBe(SURFACE.dirt);
+      for (const d of [-1, 1, -COLS, COLS]) {
+        expect(map.solid[t + d], name).toBe(0);
+        expect(g.waterDepthAt(...middle(map, t + d)), name).toBe(0);
+      }
+      expect(g.solidAt(p.x, p.y), name).toBe(true);
+      expect(standable(g, p.x, p.y), name).toBe(false);
+      // its own circle, and nobody else's
+      let mine = 0;
+      for (let i = 0; i < map.obstacles.length; i += 3) {
+        const d = Math.hypot(map.obstacles[i] - p.x, map.obstacles[i + 1] - p.y);
+        if (d < 1e-3) mine++;
+        else expect(d, name).toBeGreaterThan(map.obstacles[i + 2] + OBSTACLE.gnome![0][2] * p.scale);
+      }
+      expect(mine, name).toBe(1);
+    }
+  });
+
+  it('hovers every UFO over an open hilltop, clear over everything under its saucer', () => {
+    for (const { name, p } of of('ufo')) {
+      const floor = g.heightAt(p.x, p.y);
+      expect(p.z, name).toBe(floor + SUBJECTS.ufo.hover * p.scale);
+      expect(g.waterDepthAt(p.x, p.y), name).toBe(0);
+      expect(g.solidAt(p.x, p.y), name).toBe(false);
+      expect(standable(g, p.x, p.y), name).toBe(true);
+      const r = SUBJECTS.ufo.radius * p.scale;
+      for (let k = 0; k < 64; k++) {
+        const x = p.x + ((k % 8) / 3.5 - 1) * r,
+          y = p.y + (Math.floor(k / 8) / 3.5 - 1) * r;
+        expect(g.topAt(x, y), name).toBeLessThan(p.z - 20);
+      }
+      // a top: the ground no higher within 4 tiles of it, and lower 12 tiles out most of the way round (a hill under
+      // the mountains has them behind it)
+      let lower = 0;
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        expect(g.heightAt(p.x + Math.cos(a) * 4 * TILE, p.y + Math.sin(a) * 4 * TILE), name).toBeLessThan(floor + 1);
+        if (g.heightAt(p.x + Math.cos(a) * 12 * TILE, p.y + Math.sin(a) * 12 * TILE) < floor) lower++;
+      }
+      expect(lower, name).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  it('stands none inside rock, anything built, or an obstacle not its own, nor by the start or on the square', () => {
+    for (const { name, p } of named) {
+      expect(map.solid[tileAt(map, p.x, p.y)], name).toBe(0);
+      if (p.kind !== 'gnome') expect(g.solidAt(p.x, p.y), name).toBe(false);
+      expect(Math.hypot(p.x - map.start.x, p.y - map.start.y), name).toBeGreaterThan(10 * TILE);
+      expect(inside(map.plazas[0].outline, p.x, p.y), name).toBe(false);
+    }
+  });
+
+  it('clears the trees, bushes, ferns and reeds that were sown round each, so it stands in the open', () => {
+    const sown: Kind[] = ['broadleaf', 'conifer', 'twisted', 'willow', 'boulder', 'bush', 'fern', 'reed'];
+    for (const o of named) {
+      if (o.clearing <= 0) continue;
+      for (const p of map.placements)
+        if (sown.includes(p.kind) && Math.hypot(p.x - o.p.x, p.y - o.p.y) < o.clearing * TILE)
+          expect.fail(`${p.kind} in the clearing of the ${o.name}`);
+    }
+  });
+
+  it('turns every duck and gnome to face within a radian of the sun, so the picture from in front of it is lit', () => {
+    const sun = Math.atan2(SUN[1], SUN[0]);
+    for (const { name, p } of named) {
+      if (!SUBJECTS[p.kind as SubjectKind].front) continue;
+      const off = Math.atan2(Math.sin(p.yaw - sun), Math.cos(p.yaw - sun));
+      expect(Math.abs(off), name).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('draws each in the look the table gives it, every gnome in a pose and a paint of his own, and a duck of each look', () => {
+    for (const o of named) {
+      expect(variantOf(o.p), o.name).toBe(o.look);
+      expect(paintOf(o.kind, o.p.vary), o.name).toBe(o.paint);
+    }
+    const gnomes = of('gnome');
+    expect(new Set(gnomes.map((o) => o.look)).size).toBe(SUBJECTS.gnome.looks.length);
+    expect(new Set(gnomes.map((o) => o.paint)).size).toBe(gnomes.length);
+    expect(new Set(of('duck').map((o) => o.look)).size).toBe(SUBJECTS.duck.looks.length);
+    // and one duck a giant, a metre tall, on the Mere
+    expect(
+      of('duck')
+        .filter((o) => o.scale > 3)
+        .map((o) => o.name),
+    ).toEqual(['mere duck']);
+  });
+
+  it('lays the pool of each UFO’s beam on its hilltop: over the ground at the bottom of its bob, and near it at the top', () => {
+    for (const { name, p } of of('ufo')) {
+      const s = p.scale,
+        floor = g.heightAt(p.x, p.y);
+      // the pool's underside at the bottom of the bob, and its top at the top of it
+      const under = p.z - BOB.height + (-SUBJECTS.ufo.hover + BEAM.over - 0.2) * s;
+      const over = p.z + BOB.height + (-SUBJECTS.ufo.hover + BEAM.over + 0.1) * s;
+      expect(over - floor, name).toBeLessThan(4);
+      for (let k = 0; k < 24; k++)
+        for (const f of [0, 0.5, 1]) {
+          const a = (k / 24) * Math.PI * 2,
+            r = BEAM.pool * s * f;
+          expect(g.heightAt(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r), name).toBeLessThan(under);
+        }
+    }
+  });
+
+  it('is seen from ground the rover reaches within 30 m, and one with a front from in front of it', () => {
+    for (const { name, p } of named) {
+      const from = seenFrom(p);
+      expect(from.length, `${name} seen from somewhere`).toBeGreaterThan(0);
+      if (!SUBJECTS[p.kind as SubjectKind].front) continue;
+      const ahead = from.filter(([x, y]) => {
+        const a = Math.atan2(y - p.y, x - p.x) - p.yaw;
+        return Math.cos(a) > Math.cos(Math.PI / 3);
+      });
+      expect(ahead.length, `${name} seen from in front`).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * Where an oddity is seen from: the middle of every tile the rover reaches within 30 m of it, whose camera's eye,
+   * `HEAD.height` over the ground there, has a clear line to the oddity's middle over the ground and over the top of
+   * whatever is built or is rock on every tile between. Every fourth tile each way, which is plenty to find one.
+   */
+  function seenFrom(p: Placement): [number, number][] {
+    const s = SUBJECTS[p.kind as SubjectKind];
+    const mz = p.z + (s.height * p.scale) / 2;
+    const out: [number, number][] = [];
+    const reachTiles = Math.floor(300 / TILE);
+    const [tx0, ty0] = [Math.floor((p.x - ORIGIN_X) / TILE), Math.floor((p.y - ORIGIN_Y) / TILE)];
+    for (let dy = -reachTiles; dy <= reachTiles; dy += 4)
+      for (let dx = -reachTiles; dx <= reachTiles; dx += 4) {
+        const tx = tx0 + dx,
+          ty = ty0 + dy;
+        if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) continue;
+        const t = ty * COLS + tx;
+        if (!reached[t]) continue;
+        const [x, y] = middle(map, t);
+        const len = Math.hypot(p.x - x, p.y - y);
+        if (len > 300 || len < s.radius * p.scale + 3) continue;
+        const ez = g.heightAt(x, y) + HEAD.height;
+        let clear = true;
+        for (let d = 1; d < len - s.radius * p.scale && clear; d += 1) {
+          const f = d / len;
+          const sx = x + (p.x - x) * f,
+            sy = y + (p.y - y) * f;
+          if (ez + (mz - ez) * f <= g.topAt(sx, sy)) clear = false;
+        }
+        if (clear) out.push([x, y]);
+      }
+    return out;
+  }
 });
 
 /** Whether a point lies on an outline's edge, to within a hundredth of a unit. */

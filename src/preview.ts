@@ -48,7 +48,8 @@ import {
 import { waterGroups, waterMeshes } from './models/water';
 import { fixtureAt, fixtureWorld } from './world/fixture';
 import { groundOf } from './world/ground';
-import { BIOME, CHUNK, type Biome, type Kind, type Placement, type WorldMap } from './world/types';
+import { ODDITIES, varyOf } from './world/oddities';
+import { BIOME, CHUNK, SUBJECTS, type Biome, type Kind, type Placement, type WorldMap } from './world/types';
 
 const MM_PER_UNIT = 100;
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -62,7 +63,7 @@ declare global {
 
 /** A view: the world it is of, where the rover stands and faces, and the camera's eye and what it looks at. */
 interface View {
-  world: 'showcase' | 'fixture' | 'lab-kit' | 'lab-small' | 'lab-built' | 'lab-ruins' | 'lab';
+  world: 'showcase' | 'fixture' | 'lab-kit' | 'lab-small' | 'lab-built' | 'lab-ruins' | 'lab-odd' | 'lab-looks' | 'lab';
   rover?: [number, number, number];
   /** The chase camera behind the rover, or an eye and a target of its own. */
   chase?: number;
@@ -84,6 +85,54 @@ interface View {
  * about 9 m back).
  */
 const TILT = (50 * Math.PI) / 180;
+
+/** The size the world sets each oddity at. */
+const ODDITY_SCALE = {
+  duck: ODDITIES.find((o) => o.kind === 'duck')!.scale,
+  gnome: ODDITIES.find((o) => o.kind === 'gnome')!.scale,
+};
+
+/** Where the oddities' lab sets each, x and y: a duck and a gnome either side, and a UFO hovering beyond. */
+const ODD = { duck: [-7, 0], gnome: [7, 0], ufo: [0, 40] } as const;
+
+/** The `vary` that draws an oddity of `kind` in its `look` and `paint`. */
+const looking = (kind: 'duck' | 'gnome' | 'ufo', look = 0, paint = 0) => varyOf({ kind, look, paint }, 0.5);
+
+/**
+ * The looks' lab: every look of a duck in a row, the giant the Mere has at the end of it, and every look of a gnome in
+ * a row behind, each in its own paint, all turned a little off facing the camera's side (-y), so each is seen.
+ */
+const LOOKS = { duckY: 0, gnomeY: 40, duckX: [-12, -4, 4], giantX: 16, gnomeX: [-24, -12, 0, 12, 24] } as const;
+
+/** The views of each look close to, from in front and a little to one side, as the `duck` and `gnome` views are. */
+function lookViews(): Record<string, View> {
+  const out: Record<string, View> = {};
+  SUBJECTS.duck.looks.forEach((l, k) => {
+    const x = LOOKS.duckX[k];
+    out[`look-duck-${l.replace(' ', '-')}`] = {
+      world: 'lab-looks',
+      eye: [x + 2.2, LOOKS.duckY - 10.5, 4.5],
+      target: [x, LOOKS.duckY, 1.85],
+      grass: false,
+    };
+  });
+  out['look-duck-giant'] = {
+    world: 'lab-looks',
+    eye: [LOOKS.giantX + 6, LOOKS.duckY - 26, 9],
+    target: [LOOKS.giantX, LOOKS.duckY, 4.6],
+    grass: false,
+  };
+  SUBJECTS.gnome.looks.forEach((l, k) => {
+    const x = LOOKS.gnomeX[k];
+    out[`look-gnome-${l}`] = {
+      world: 'lab-looks',
+      eye: [x + 5, LOOKS.gnomeY - 12, 5.8],
+      target: [x, LOOKS.gnomeY, 3.1],
+      grass: false,
+    };
+  });
+  return out;
+}
 
 const VIEWS: Record<string, View> = {
   rover: { world: 'lab', rover: [0, 0, 0.35], eye: [11, -9, 6], target: [0, 0, 2.4] },
@@ -129,6 +178,37 @@ const VIEWS: Record<string, View> = {
     clouds: false,
   },
   fixture: { world: 'fixture', rover: [...fixtureAt(6, 23.5), 0], eye: [10, -150, 130], target: [0, 0, 0] },
+  // the oddities close to, each from in front and a little to one side, a hand's breadth over the grass; then the UFO
+  // from the ground below it, as the rover sees it; then all three by the rover, for their size against it
+  duck: {
+    world: 'lab-odd',
+    eye: [ODD.duck[0] + 2.2, ODD.duck[1] - 10.5, 4.5],
+    target: [...ODD.duck, 1.85],
+    grass: false,
+  },
+  gnome: {
+    world: 'lab-odd',
+    eye: [ODD.gnome[0] + 5, ODD.gnome[1] - 12, 5.8],
+    target: [...ODD.gnome, 3.1],
+    grass: false,
+  },
+  ufo: {
+    world: 'lab-odd',
+    eye: [ODD.ufo[0] + 30, ODD.ufo[1] - 26, SUBJECTS.ufo.hover + 12],
+    target: [ODD.ufo[0], ODD.ufo[1], SUBJECTS.ufo.hover + 2],
+  },
+  'ufo-below': {
+    world: 'lab-odd',
+    rover: [ODD.ufo[0] - 30, ODD.ufo[1] - 80, 1.2],
+    eye: [ODD.ufo[0] - 40, ODD.ufo[1] - 100, 5],
+    target: [ODD.ufo[0], ODD.ufo[1], SUBJECTS.ufo.hover - 2],
+  },
+  oddities: { world: 'lab-odd', rover: [-4, -22, Math.PI / 2], eye: [20, -60, 8], target: [0, 0, 20] },
+  // the fixture's duck on its pond and its gnome, from the chase camera's height
+  'fixture-odd': { world: 'fixture', rover: [...fixtureAt(10, 13), -Math.PI / 2], chase: 70 },
+  // every look of the oddities in a row, the ducks before the gnomes; and each close to
+  looks: { world: 'lab-looks', eye: [0, -34, 16], target: [0, 20, 2], grass: false },
+  ...lookViews(),
 };
 
 const BIOME_ROWS: Biome[] = [BIOME.meadow, BIOME.pine, BIOME.autumn, BIOME.heath, BIOME.wetland];
@@ -204,6 +284,25 @@ function worldFor(view: View): WorldMap {
         }
       });
       return labWorld(ps, BIOME.heath);
+    }
+    case 'lab-odd':
+      // each turned toward the views' side and at the size the world sets it, the UFO at its height over the lawn
+      return labWorld([
+        at('duck', ODD.duck[0], ODD.duck[1], BIOME.meadow, looking('duck'), -0.55, ODDITY_SCALE.duck),
+        at('gnome', ODD.gnome[0], ODD.gnome[1], BIOME.meadow, looking('gnome'), -0.6, ODDITY_SCALE.gnome),
+        { ...at('ufo', ODD.ufo[0], ODD.ufo[1], BIOME.meadow, looking('ufo'), 0.3), z: SUBJECTS.ufo.hover },
+      ]);
+    case 'lab-looks': {
+      const ps: Placement[] = [];
+      LOOKS.duckX.forEach((x, k) =>
+        ps.push(at('duck', x, LOOKS.duckY, BIOME.meadow, looking('duck', k), -1.2, ODDITY_SCALE.duck)),
+      );
+      const giant = ODDITIES.find((o) => o.name === 'mere duck')!;
+      ps.push(at('duck', LOOKS.giantX, LOOKS.duckY, BIOME.meadow, looking('duck', giant.look), -1.2, giant.scale));
+      LOOKS.gnomeX.forEach((x, k) =>
+        ps.push(at('gnome', x, LOOKS.gnomeY, BIOME.meadow, looking('gnome', k, k), -1.15, ODDITY_SCALE.gnome)),
+      );
+      return labWorld(ps);
     }
     case 'lab':
       return labWorld([]);

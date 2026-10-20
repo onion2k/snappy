@@ -12,9 +12,12 @@
  * The types are shared with the smoke tests, so a test that calls something
  * that is not here does not compile.
  */
+import { Brackets } from './brackets';
 import type { Game } from './game';
 import { checkInvariants } from './invariants';
 import { seeded } from './random';
+import type { Grade } from './score';
+import type { ViewfinderState } from './viewfinder';
 import { standable } from './world/drive';
 import { SURFACE } from './world/types';
 
@@ -90,6 +93,41 @@ export interface SoundState {
   beat: number;
 }
 
+/** A picture's grade, as the card shows it: the total out of a hundred, the stars, what it is of, and each term. */
+export interface PhotoGrade {
+  total: number;
+  stars: number;
+  /** The oddity it is of, by its index among `oddities()`, or -1 with none in frame. */
+  best: number;
+  /** Its name, or null with none in frame. */
+  name: string | null;
+  terms: Record<string, number>;
+}
+
+/** The viewfinder as it stands, and what it brackets. */
+export interface ViewfinderView extends ViewfinderState {
+  /** Where the focus mark is on the screen, across and up from the middle, minus one to one. */
+  mark: [number, number];
+  /** The focus as a depth along the view, which the blur is drawn at. */
+  focusDepth: number;
+  /** Whether the frame is drawn blurred: off out of the viewfinder, and at a frame-time rung that gave the blur up. */
+  blurred: boolean;
+  /** Every oddity bracketed: its name, its box on the screen (x0, y0, x1, y1, y up), and whether it is in focus. */
+  framed: { name: string; box: [number, number, number, number]; sharp: boolean }[];
+}
+
+/** An oddity, where it is now: a UFO where its bob has lifted it. */
+export interface OddityState {
+  name: string;
+  kind: string;
+  x: number;
+  y: number;
+  /** Its foot, in units. */
+  z: number;
+  /** Which way its front faces, anticlockwise from +x. */
+  yaw: number;
+}
+
 export interface GameApi {
   readonly version: 1;
   /** Booted, and the frame loop running. */
@@ -121,8 +159,28 @@ export interface GameApi {
   zoom(factor: number): void;
   /** The camera turned round the rover by `turn` radians and tilted by `tilt`, as a drag on the view or Q and E do. */
   orbit(turn: number, tilt: number): void;
-  /** What has happened since this was last asked, a line each; the page tells of nothing yet. */
+  /** What has happened since this was last asked, a line each: a picture taken is `photo <total> <name>`. */
   events(): string[];
+
+  /**
+   * Into the viewfinder or out of it, as F or the camera button does. Resolves once the depth-of-field passes the
+   * viewfinder draws with are built, so a picture taken after it is blurred as a player sees it.
+   */
+  photo(on: boolean): Promise<void>;
+  /** The view turned by `turn` radians anticlockwise and tilted by `tilt` up, as a drag in the viewfinder does. */
+  aim(turn: number, tilt: number): void;
+  /** The lens's focal length multiplied by `factor`, as the wheel or a pinch does in the viewfinder. */
+  lens(factor: number): void;
+  /** Focus set on what is under the screen point (nx, ny), minus one to one, y up, and held: a click without a drag. */
+  focusAt(nx: number, ny: number): void;
+  /** Back to auto focus, as A or the AF button does. */
+  autoFocus(): void;
+  /** The shutter, as Space or the shutter button: the picture graded and its card shown; null out of the viewfinder. */
+  shutter(): PhotoGrade | null;
+  /** The viewfinder as it stands. */
+  viewfinder(): ViewfinderView;
+  /** Every oddity in the world, by name, where it is now. */
+  oddities(): OddityState[];
   /** The rules that must always hold, broken; empty when all is well. */
   invariants(): string[];
 
@@ -169,6 +227,19 @@ export interface DebugHost {
   mute(on: boolean): void;
   wake(): void;
   events: string[];
+  /**
+   * The viewfinder raised or lowered by the page, as F does, so its marks, buttons and blur go with it; resolves once
+   * the blur's passes are built. Named apart from the API's `photo`, which it stands behind.
+   */
+  raise(on: boolean): Promise<void>;
+  /** Whether the viewfinder's frame is blurred now: false at a rung that has given the blur up. */
+  blurred(): boolean;
+}
+
+/** A grade as plain numbers, with the name of what it is of. */
+export function photoGrade(game: Game, g: Grade): PhotoGrade {
+  const { total, stars, best, terms } = g.toJSON();
+  return { total, stars, best, name: best >= 0 ? game.oddityNames[best] : null, terms };
 }
 
 export function createApi(host: DebugHost): GameApi {
@@ -242,7 +313,61 @@ export function createApi(host: DebugHost): GameApi {
     events() {
       return host.events.splice(0);
     },
-    invariants: () => checkInvariants(game, host.camera()),
+
+    photo: (on) => host.raise(on),
+    aim(turn, tilt) {
+      game.viewfinder.look(turn, tilt);
+    },
+    lens(factor) {
+      game.viewfinder.zoomBy(factor);
+    },
+    focusAt(nx, ny) {
+      game.viewfinder.focusAt(nx, ny, game.ground, game.subjects);
+    },
+    autoFocus() {
+      game.viewfinder.auto();
+    },
+    shutter() {
+      const g = game.shutter();
+      return g ? photoGrade(game, g) : null;
+    },
+    viewfinder() {
+      const vf = game.viewfinder;
+      const b = new Brackets();
+      if (vf.active) b.update(vf.shot, game.subjects, game.ground);
+      const framed: ViewfinderView['framed'] = [];
+      for (let k = 0; k < b.count; k++)
+        framed.push({
+          name: game.oddityNames[b.which[k]],
+          box: [b.box[k * 4], b.box[k * 4 + 1], b.box[k * 4 + 2], b.box[k * 4 + 3]],
+          sharp: b.sharp[k] === 1,
+        });
+      return {
+        ...vf.state(),
+        mark: [vf.mark[0], vf.mark[1]],
+        focusDepth: vf.focusDepth,
+        blurred: host.blurred(),
+        framed,
+      };
+    },
+    oddities() {
+      const s = game.subjects;
+      return game.oddityNames.map((name, i) => ({
+        name,
+        kind: s.kinds[i],
+        x: s.x[i],
+        y: s.y[i],
+        z: s.foot[i] + s.lift[i],
+        yaw: s.yaw[i],
+      }));
+    },
+    invariants() {
+      // in the viewfinder the camera is the lens, held to the camera's rules from its eye to the rover's body it is on
+      const vf = game.viewfinder,
+        r = game.rover;
+      const camera = vf.active ? { position: vf.eye, target: [r.x, r.y, r.z + 2] } : host.camera();
+      return checkInvariants(game, camera);
+    },
 
     save() {
       game.persist();

@@ -53,6 +53,11 @@ const CEILING: Record<Kind, number> = {
   stall: 320,
   windmill: 160,
   menhir: 50,
+  // the oddities, the game's stars, drawn smooth and close to: a dozen of them in the world at most, each look its own
+  // ceiling's worth (a duck in a top hat, a gnome with a barrow of apples), and the two UFOs with their beams
+  duck: 1200,
+  gnome: 1900,
+  ufo: 4500,
 };
 
 const placement = (kind: Kind, over: Partial<Placement> = {}): Placement => ({

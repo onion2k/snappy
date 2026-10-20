@@ -310,6 +310,12 @@ export class Rover {
   /** The head's turn against the body, anticlockwise, and its tilt, up positive, in radians: for the model to pose. */
   headYaw = 0;
   headPitch = 0;
+  /**
+   * The head held where something else says, for as long as it says: one in the first, then the turn and the tilt, as
+   * `headYaw` and `headPitch` have them. The viewfinder holds it, so the head turns with the view. In an array, since
+   * the game writes it every frame and V8 boxes a fraction written to a field.
+   */
+  readonly hold = new Float64Array(3);
   /** The eyelids, from 0 open to 1 shut. */
   blink = 0;
   /** How long it has stood still with nothing asked of it, in seconds. */
@@ -400,6 +406,15 @@ export class Rover {
       }
     }
     return false;
+  }
+
+  /**
+   * Stopped dead where it is, as it is when the player raises the camera: its speed and its turn gone, and the body's
+   * sway with them, but its pose kept, so it stands where it was and as it was.
+   */
+  halt(): void {
+    this.speed = this.yawRate = this.lastSpeed = 0;
+    this.pitchRate = this.rollRate = 0;
   }
 
   /** Where whoever is looking at it stands, the camera's eye, which the page says each frame: the head turns to it when idle. */
@@ -576,10 +591,17 @@ export class Rover {
       yaw = Math.max(-HEAD.most, Math.min(HEAD.most, this.steer * HEAD.steer + this.yawRate * HEAD.turn));
       pitch = HEAD.ahead;
     }
-    this.headYawRate += (rate * rate * (yaw - this.headYaw) - 2 * rate * this.headYawRate) * h;
-    this.headYaw += this.headYawRate * h;
-    this.headPitchRate += (rate * rate * (pitch - this.headPitch) - 2 * rate * this.headPitchRate) * h;
-    this.headPitch += this.headPitchRate * h;
+    if (this.hold[0]) {
+      // held, it is where it is held at once, and still, so it springs from there when it is let go
+      this.headYaw = this.hold[1];
+      this.headPitch = this.hold[2];
+      this.headYawRate = this.headPitchRate = 0;
+    } else {
+      this.headYawRate += (rate * rate * (yaw - this.headYaw) - 2 * rate * this.headYawRate) * h;
+      this.headYaw += this.headYawRate * h;
+      this.headPitchRate += (rate * rate * (pitch - this.headPitch) - 2 * rate * this.headPitchRate) * h;
+      this.headPitch += this.headPitchRate * h;
+    }
 
     this.clock += h;
     if (this.clock >= this.nextBlink) {
