@@ -516,6 +516,9 @@ describe('what is wrong with an album', () => {
     expect(checkInvariants(other).join('\n')).toMatch(/the save's album is not a list/);
     other.progress.save.album = Array.from({ length: other.album.capacity + 1 }, () => ({}));
     expect(checkInvariants(other).join('\n')).toMatch(/the save's album holds 13/);
+    // a picture of every oddity is a full album, not one too many
+    other.progress.save.album = Array.from({ length: other.album.capacity }, () => ({}));
+    expect(checkInvariants(other).join('\n')).not.toMatch(/the save's album holds/);
   });
 });
 
