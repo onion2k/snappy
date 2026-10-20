@@ -14,8 +14,9 @@ specified in `docs/specs/landscape-rover.md`), and the photo mode
 (`docs/specs/photo.md`): a dozen oddities placed about the world (rubber
 ducks, garden gnomes, two UFOs), a first-person viewfinder with a lens, a
 focus drawn by artshape-render's depth of field, brackets round what is worth
-a picture, and a shutter that grades the picture and throws it away. The
-album is the next feature.
+a picture, and a shutter that grades the picture; and the album
+(`docs/specs/album.md`), the best picture of each oddity kept in the save as
+its numbers and redrawn from them, opened with Tab over a paused game.
 
 ## The factory
 
@@ -39,23 +40,23 @@ same game, so every failure can be played again.
 What each holds, and where its figure and its tolerance are kept. A figure
 is not copied here; read it from its file.
 
-| Gate          | Holds                                                                          | Figure kept in                   | Tolerance, in                                            |
-| ------------- | ------------------------------------------------------------------------------ | -------------------------------- | -------------------------------------------------------- |
-| `perf`        | boot, the least of 24 frames, the gzipped download, a driven run's worst frame | `smoke/perf-baseline.json`       | `smoke/judging.ts`                                       |
-| `perf`        | the same, against the budget                                                   | `BUDGET` in `smoke/perf.spec.ts` | none: a budget is a limit                                |
-| `pace:check`  | the autopilot's seconds to cross the world west to east                        | `scripts/pace-baseline.json`     | `TOLERANCE`, `scripts/pace.ts`; and the spec's 60-150 s  |
-| `look`        | the scenes, to the pixel                                                       | `smoke/screens/`                 | `TOLERANCE`, `smoke/look.spec.ts`                        |
-| `mutate`      | surviving mutants, per logic file, held exactly                                | `mutation-baseline.json`         | none; the score floor is `break` in `stryker.config.mjs` |
-| `fuzz`        | `src/invariants.ts` and the camera's rules, over seeds 1-12 by default         | none                             | none                                                     |
-| `determinism` | the same seed driven twice by the autopilot, hashed, seeds 1-6                 | none                             | none                                                     |
+| Gate          | Holds                                                                            | Figure kept in                          | Tolerance, in                                            |
+| ------------- | -------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------- |
+| `perf`        | boot, the least of 24 frames, the gzipped download, a driven run's worst frame   | `smoke/perf-baseline.json`              | `smoke/judging.ts`                                       |
+| `perf`        | the same, against the budget                                                     | `BUDGET` in `smoke/perf.spec.ts`        | none: a budget is a limit                                |
+| `pace:check`  | the autopilot's seconds to cross the world west to east                          | `scripts/pace-baseline.json`            | `TOLERANCE`, `scripts/pace.ts`; and the spec's 60-150 s  |
+| `look`        | the scenes, to the pixel                                                         | `smoke/screens/`                        | `TOLERANCE`, `smoke/look.spec.ts`                        |
+| `mutate`      | surviving mutants, per logic file, held exactly                                  | `mutation-baseline.json`                | none; the score floor is `break` in `stryker.config.mjs` |
+| `fuzz`        | `src/invariants.ts` and the camera's rules, over seeds 1-12 by default           | none                                    | none                                                     |
+| `determinism` | the same seed driven twice by the autopilot, hashed, seeds 1-6                   | none                                    | none                                                     |
+| `leaks`       | what is kept (the album, the save's bytes, the tracks, the heap) over long games | ceilings in `WATCH`, `scripts/leaks.ts` | none: a ceiling is a limit; the heap held steady         |
 
 The world is held by its own unit tests in `test/world*.test.ts`: its hash
 pinned, every tile the rover fits on reached from the start, the banks each
-with a way round, the fords on roads. Two of the template's gates are not
-back yet, since there is nothing for them to hold: **`bench`** comes with
-the first bodies in the physics world, and **`leaks`** with the first thing
-kept, most likely the album of pictures taken. The tracks are a fixed pool,
-held by an invariant.
+with a way round, the fords on roads. One of the template's gates is not
+back yet, since there is nothing for it to hold: **`bench`** comes with the
+first bodies in the physics world. **`leaks`** came back with the album, the
+first thing kept. The tracks are a fixed pool, held by an invariant.
 
 A budget is what the game may cost at all; a baseline is what it cost at
 the last commit, held both ways, so a step toward a budget is noticed as
@@ -108,6 +109,12 @@ machine is at other work fails every run after it.
   `src/score.ts` the grade (eight terms, nought to one, multiplied, and the
   card's line from `critique`), and `src/brackets.ts` what is bracketed. All
   of it from geometry, never from pixels, and allocating nothing a frame.
+- The album: `src/album.ts` the pictures kept, a slot an oddity, judged on
+  the shutter and read from and written to the save; `src/albumpages.ts` its
+  pages, their words and the swipe; `src/albummode.ts` opening and closing it,
+  its keys, what closing puts back, and the picture fitted to its mount; `src/albumview.ts` the page's mount. A
+  page is redrawn by the scene at the kept lens and moment, with the rover
+  and its tracks left out (`Scene.hidePlayer`).
 - `src/world/` is the world, made once from content and the same every
   game: `types.ts` is the contract every other module reads it by
   (`WorldMap`, `Ground`, `DRIVE`, the kinds), `drive.ts` the one rule of
@@ -204,8 +211,10 @@ with a version bump here.
   save field or scene has to work in every path it can reach.
 - **Save compatibility.** A new save field needs a default in `progress.ts`
   and a save in the new shape in `test/saves/`; the corpus test fails until
-  it is there. The save is `muted` (false) and `volume` (1, from 0 to 1;
-  anything else loads as 1). A save from the demo's day, with `bank` and
+  it is there. The save is `muted` (false), `volume` (1, from 0 to 1;
+  anything else loads as 1) and `album` (a list, empty by default; an entry
+  that is wrong, or of an oddity the world does not have, is left out on
+  load, `Album.load` in `src/album.ts`). A save from the demo's day, with `bank` and
   `banked`, loads with those ignored.
 - **Match the style.** Comments are full sentences in the house voice,
   saying why and not what. Prettier decides the formatting.
@@ -215,8 +224,7 @@ with a version bump here.
 The house's nine points, in `~/.claude/CLAUDE.md`. Here, they mean: unit
 tests in `test/`, a stage in `smoke/progress.spec.ts`, a rule in
 `src/invariants.ts` and an action in `scripts/fuzzer.ts`; a fixed pool or a
-size in `scripts/leaks.ts` for anything kept (the first thing kept brings
-the leaks gate back); the perf figures before and after in the report and
+ceiling in `scripts/leaks.ts`'s `WATCH` for anything kept; the perf figures before and after in the report and
 within budget, `measureFrame` in any other scene touched, and a picture in
 `smoke/look.spec.ts` (its views in `smoke/views.ts`). New tests mutation-checked by hand, and
 the gate run over the files the change touched: `npx stryker run --force
@@ -262,8 +270,9 @@ with `step(frames)`, and reads it back with `state` (`t`, `frame`,
 `paused`), `rover`, `camera`, `ground(x, y)`, `events`, `invariants` (the
 camera's rules among them), `content` (the bounds, the start, the
 landmarks) and `save`. The viewfinder is `photo(on)`, `aim`, `lens`,
-`focusAt`, `autoFocus` and `shutter`, read back by `viewfinder` and
-`oddities`, and a picture taken is told in `events`. `zoom` and `orbit` work the chase camera as the
+`focusAt`, `autoFocus` and `shutter` (saying what the album kept), read back
+by `viewfinder` and `oddities`, and a picture taken is told in `events`. The
+album is `album`, `openAlbum(on)`, `albumPage(n)` and `albumState`. `zoom` and `orbit` work the chase camera as the
 wheel, a drag and Q and E do (`camera()` reads its azimuth, tilt and how far
 it is turned), and `look` aims it by hand. `mute`, `wake` (the first gesture) and `sound` work the sound, and
 `measureFrame` and `bootMs` are the perf gate's. Unit tests get a game without a page from
@@ -298,9 +307,9 @@ Said so that a green `npm run check` is not read as more than it holds.
   `src/models/` (but for the clouds' motion): a full run over them was on
   course for two days (2026-10-20). They are held by their own tests, the
   fuzzer, determinism and the pictures, not by their mutants.
-- **Play, in part.** The fuzzer, determinism and pace hold the rover and
-  the world; nothing holds a bench of the physics (no bodies) or a leak
-  watch (nothing kept), and nothing judges whether the world is fun.
+- **Play, in part.** The fuzzer, determinism, pace and leaks hold the rover,
+  the world and the album; nothing holds a bench of the physics (no bodies),
+  and nothing judges whether the world is fun.
 - **Structure and dependencies.** Nothing reads the imports for coupling,
   and nothing audits what is pinned or its licence; `package-lock.json` and
   a person do.

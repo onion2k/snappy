@@ -10,9 +10,11 @@
  * read them (`subjects`), the UFOs among them bobbing by game time; the
  * viewfinder, raised and lowered by `photo`, which stops the rover while the
  * player looks and turns its head with the view; and the shutter, which
- * grades the picture and tells of it (`GameEvents.photo`). The page draws
- * the viewfinder and the card, and decides nothing of them.
+ * grades the picture, keeps it in the album if it is the best yet of its
+ * oddity, and tells of it (`GameEvents.photo`). The page draws the
+ * viewfinder, the card and the album, and decides nothing of them.
  */
+import { Album, type Keeping } from './album';
 import { makeWorld, type World } from './physics';
 import { Progress } from './progress';
 import type { Random } from './random';
@@ -29,10 +31,11 @@ import { SUBJECTS, type Ground, type WorldMap } from './world/types';
 
 /**
  * What the game tells of as it happens, for whoever is showing it: the page's card, the test API's log. The first
- * is a picture taken; the grade is the game's own, graded into again by the next, so it is read when it is told.
+ * is a picture taken, with what the album made of it; the grade and the keeping are the game's own, written into
+ * again by the next, so they are read when they are told.
  */
 export interface GameEvents {
-  photo(grade: Grade): void;
+  photo(grade: Grade, kept: Keeping): void;
 }
 
 export interface GameOptions {
@@ -80,8 +83,10 @@ export class Game {
   /** Each oddity's name: the world's, or its kind's and a count where the world gives none (a test's fixture). */
   readonly oddityNames: readonly string[];
   readonly viewfinder = new Viewfinder();
-  /** The last picture's grade, graded into again by each: nothing is kept of a picture past the next. */
+  /** The last picture's grade, graded into again by each: what is kept of a picture past the next is the album's. */
   readonly picture = new Grade();
+  /** The best picture of each oddity, loaded from the save. */
+  readonly album: Album;
   /** Which oddities bob (one) and which do not, and the vary each bobs by, read once from their placements. */
   private readonly bobs: Uint8Array;
   private readonly vary: Float64Array;
@@ -102,6 +107,11 @@ export class Game {
     this.bobs = Uint8Array.from(s.kinds, (k) => (k === 'ufo' ? 1 : 0));
     this.vary = Float64Array.from(s.placements, (p) => p.vary);
     this.oddityNames = namesOf(s);
+    this.album = new Album(this.oddityNames);
+    // what the album left out of the save goes from it too, so the save holds what the game does; written to the
+    // store with whatever is next written, as loading alone never writes
+    this.album.load(progress.save.album);
+    progress.save.album = this.album.toSave();
   }
 
   /** Whether the player is looking through the viewfinder. */
@@ -126,14 +136,30 @@ export class Game {
   }
 
   /**
-   * The picture taken: graded, the grade told, and handed back; nothing if the viewfinder is down. Each press is a
-   * picture of its own, graded into the one grade, which the next replaces.
+   * The picture taken: graded, kept in the album if it is the best yet of its oddity (and the save written then,
+   * since nothing else will write it), told of, and its grade handed back; nothing if the viewfinder is down. Each
+   * press is a picture of its own, graded into the one grade, which the next replaces, and judged against what the
+   * album holds by then.
    */
   shutter(): Grade | null {
-    if (!this.viewfinder.active) return null;
-    grade(this.viewfinder.shot, this.subjects, this.ground, SUN, this.picture);
-    this.events?.photo(this.picture);
+    const vf = this.viewfinder;
+    if (!vf.active) return null;
+    grade(vf.shot, this.subjects, this.ground, SUN, this.picture);
+    if (this.album.consider(this.picture, vf.shot, vf.mark, this.t) !== 'none') {
+      this.progress.save.album = this.album.toSave();
+      this.persist();
+    }
+    this.events?.photo(this.picture, this.album.last);
     return this.picture;
+  }
+
+  /**
+   * How far each oddity was lifted at game time `t`, written into `out`: a UFO by its bob, and the rest not at all. For
+   * an album page, drawn at the moment its picture was taken; the game's own lifts are the step's, which writes them
+   * itself rather than through here, as a time handed on to a call that is not inlined is boxed every frame.
+   */
+  liftsAt(t: number, out: Float64Array): void {
+    for (let i = 0; i < this.subjects.count; i++) out[i] = this.bobs[i] ? ufoBob(t, this.vary[i]) : 0;
   }
 
   /**

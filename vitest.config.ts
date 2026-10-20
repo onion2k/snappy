@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     // Under the mutation gate, the tests that play the whole real world (the fuzzer's, determinism's, the pace
-    // gate's and the world's own) are left out: they hold the scripts and the world's generator, which are not
+    // gate's, the leak run's and the world's own) are left out: they hold the scripts and the world's generator, which are not
     // mutated, and every mutant of the rover or the camera reran them for seconds each, two hours a run
     // (2026-10-20). The mutated files are judged by their own tests on the fixture world. The scene's tests, which build
     // the whole world's scene, are left out for the same reason: view.ts's mutants are judged by view.test.ts.
@@ -15,6 +15,7 @@ export default defineConfig({
             'test/fuzz.test.ts',
             'test/determinism.test.ts',
             'test/pace.test.ts',
+            'test/leaks.test.ts',
             'test/world.test.ts',
             'test/world-graph.test.ts',
             'test/world-parts.test.ts',

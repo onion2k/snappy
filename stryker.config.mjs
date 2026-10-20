@@ -17,12 +17,13 @@ export default {
     '!src/debug.ts',
     '!src/look.ts',
     '!src/sun.ts',
-    // the models' preview page and its own world, the stick's element and the viewfinder's marks: the page's, seen
-    // and not unit-tested
+    // the models' preview page and its own world, the stick's element, the viewfinder's marks and the album's mount:
+    // the page's, seen and not unit-tested
     '!src/preview.ts',
     '!src/models/showcase.ts',
     '!src/touch.ts',
     '!src/hud.ts',
+    '!src/albumview.ts',
     // the meshes and colours: pictures, held by their pictures and their triangle ceilings, not by a mutant's survival
     '!src/models/palette.ts',
     '!src/models/scenery.ts',

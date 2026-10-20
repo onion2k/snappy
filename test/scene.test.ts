@@ -10,6 +10,7 @@ import { Game } from '../src/game';
 import { Progress, memoryStore } from '../src/progress';
 import { seeded } from '../src/random';
 import { Scene, type Draws } from '../src/scene';
+import { HOLD, SightLine, tallness } from '../src/view';
 import { CHUNK } from '../src/world/types';
 
 // the browser's image types, which the scene makes its ground's layers with, and which the test has no use for
@@ -240,4 +241,127 @@ describe('the trees thinned and dithered', () => {
     const more = { ...map, placements: [corner, ...map.placements] };
     expect(await drawnNear(more, x, y, 60)).toEqual(await drawnNear(map, x, y, 60));
   }, 60_000);
+});
+
+describe('the rover put away, for an album page', () => {
+  const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+  /** Each call to move that set a group's count: the group and the count, in the order made. */
+  const counted: [number, number][] = [];
+  const recording: Draws = {
+    ...draws,
+    move: (group: number, _m: Float32Array, count?: number) => {
+      if (count !== undefined) counted.push([group, count]);
+    },
+  };
+  let scene: Scene;
+  const { grid } = game.map;
+  const span = CHUNK * grid.tile;
+
+  beforeAll(async () => {
+    scene = new Scene(game.map, game.ground, recording);
+    await scene.build([game.map.start.x, game.map.start.y, 0]);
+  }, 60_000);
+
+  /** The rover at (x, y), the camera behind it, one settled frame. */
+  function standAt(x: number, y: number) {
+    game.rover.x = x;
+    game.rover.y = y;
+    game.rover.z = game.ground.heightAt(x, y);
+    scene.frame(game, eyeBehind(x, y, game.rover.z), [x, y, game.rover.z], 0, true);
+  }
+
+  it('draws the rover, its shade, its rings and its tracks at nought, once, and puts each back after', () => {
+    const { x, y } = game.map.start;
+    standAt(x, y);
+    counted.length = 0;
+    scene.hidePlayer = true;
+    standAt(x, y);
+    const away = counted.filter(([, n]) => n === 0).map(([g]) => g);
+    // every part of the rover, and the shade, the rings and the tracks: more than the four that are not the rover
+    expect(away.length).toBeGreaterThan(4);
+    expect(new Set(away).size, 'each group once').toBe(away.length);
+    // a second frame put away writes no count again
+    counted.length = 0;
+    standAt(x, y);
+    expect(counted.filter(([g]) => away.includes(g))).toEqual([]);
+    // drawn again, every one of them back at a count of its own: the rover's parts and the shade at one at least
+    counted.length = 0;
+    scene.hidePlayer = false;
+    standAt(x, y);
+    const back = new Map(counted.filter(([g]) => away.includes(g)));
+    expect([...back.keys()].sort((a, b) => a - b)).toEqual([...away].sort((a, b) => a - b));
+    // all but the tracks, of which there are none laid here
+    expect([...back.values()].filter((n) => n > 0).length).toBe(away.length - 1);
+  });
+
+  it('cuts for a page what its eye is in and nothing it was cut before: the same page whatever the game did first', () => {
+    // a wood with trees cut out of the chase camera's way, as the game left it when the album was opened
+    let wood: { x: number; y: number } | null = null;
+    for (let k = 2; k < grid.cols / CHUNK - 2 && !wood; k++) {
+      const x = grid.originX + k * span - 0.5;
+      for (let y = grid.originY + span; y < grid.originY + grid.rows * grid.tile - span && !wood; y += 1.5) {
+        standAt(x, y);
+        if (scene.hidden >= 3) wood = { x, y };
+      }
+    }
+    expect(wood, 'a wood in the way').not.toBeNull();
+    const cut = new Int32Array(64);
+    const n = scene.cutTrees(cut);
+    // an eye beside one of the trees cut, near enough its crown to keep it cut by the hold that stops a cut tree
+    // flickering, and not in it: a page's eye there must see the tree whole, as a page drawn after a reload does
+    const sight = new SightLine();
+    let eye: number[] | null = null,
+      tree = -1;
+    for (let c = 0; c < n && !eye; c++) {
+      const p = game.map.placements[cut[c]];
+      const z = p.z + tallness(p.kind) * p.scale * 0.7;
+      for (let r = 0.5; r < 20 && !eye; r += 0.25)
+        for (let a = 0; a < 16 && !eye; a++) {
+          const e = [p.x + r * Math.cos((a * Math.PI) / 8), p.y + r * Math.sin((a * Math.PI) / 8), z];
+          sight.set(e, e, scene.lens);
+          if (sight.blocks(p, HOLD) && !sight.blocks(p, 0)) {
+            eye = e;
+            tree = cut[c];
+          }
+        }
+    }
+    expect(eye, 'an eye at the edge of a cut tree').not.toBeNull();
+    const page = () => {
+      scene.hidePlayer = true;
+      scene.frame(game, eye!, eye!, 0, true);
+      const m = scene.cutTrees(cut);
+      scene.hidePlayer = false;
+      return [...cut.subarray(0, m)].sort((a, b) => a - b);
+    };
+    const afterPlay = page();
+    expect(afterPlay, 'the tree the game had cut').not.toContain(tree);
+    // and the same page with nothing cut before it: the rover stood where it cuts nothing
+    standAt(eye![0], eye![1]);
+    expect(page()).toEqual(afterPlay);
+  });
+
+  it('cuts nothing out of the way to a rover that is not there, and presses no bush', () => {
+    // a wood on a chunk border with trees between the camera and the rover, as above, and a bush under the rover
+    let wood: { x: number; y: number } | null = null,
+      bush: { x: number; y: number } | null = null;
+    for (let k = 2; k < grid.cols / CHUNK - 2 && !(wood && bush); k++) {
+      const x = grid.originX + k * span - 0.5;
+      for (let y = grid.originY + span; y < grid.originY + grid.rows * grid.tile - span; y += 1.5) {
+        standAt(x, y);
+        if (!wood && scene.hidden >= 3) wood = { x, y };
+        if (!bush && scene.cut.bushes >= 1) bush = { x, y };
+        if (wood && bush) break;
+      }
+    }
+    expect(wood, 'a wood in the way').not.toBeNull();
+    expect(bush, 'a bush under the rover').not.toBeNull();
+    scene.hidePlayer = true;
+    standAt(wood!.x, wood!.y);
+    expect(scene.hidden, 'trees cut with no rover to see').toBe(0);
+    standAt(bush!.x, bush!.y);
+    expect(scene.cut.bushes, 'bushes pressed with no rover in them').toBe(0);
+    scene.hidePlayer = false;
+    standAt(bush!.x, bush!.y);
+    expect(scene.cut.bushes, 'and pressed again once it is back').toBeGreaterThanOrEqual(1);
+  });
 });

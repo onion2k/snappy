@@ -65,7 +65,7 @@
     color: var(--dim);
     font-size: 13px;
   }
-  #help span {
+  #help .keys > span {
     color: var(--ink);
     background: rgba(255, 255, 255, 0.1);
     border-radius: 5px;
@@ -330,7 +330,8 @@
     font-weight: 600;
     text-transform: capitalize;
   }
-  #cardTerms {
+  /* the terms as bars, on the card and on an album page */
+  .terms {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 3px 8px;
@@ -338,7 +339,7 @@
     font-size: 11px;
     color: #67626f;
   }
-  #cardTerms s {
+  .terms s {
     display: block;
     height: 6px;
     border-radius: 3px;
@@ -346,13 +347,13 @@
     text-decoration: none;
     overflow: hidden;
   }
-  #cardTerms s u {
+  .terms s u {
     display: block;
     height: 100%;
     background: #4f9d69;
     transform-origin: left;
   }
-  #cardTerms s u.low {
+  .terms s u.low {
     background: #d8644a;
   }
   /* the camera's buttons: the camera itself always, and in the viewfinder the shutter and auto focus */
@@ -390,6 +391,11 @@
   body.photo #cameraBtn {
     background: rgba(255, 255, 255, 0.9);
     color: #15131c;
+  }
+  /* the album's button, beside the camera's */
+  #albumBtn {
+    right: calc(84px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
   #shutterBtn {
     right: calc(24px + env(safe-area-inset-right, 0px));
@@ -487,15 +493,41 @@
     font-size: 12px;
     color: #4d4855;
   }
-  #vfHelp .touch {
+  /* what the album made of the picture: a badge on the print's white, under its name */
+  #cardKept {
+    justify-self: start;
+    width: fit-content;
+    margin: -4px 0 10px;
+    padding: 2px 8px 1px;
+    border-radius: 4px;
+    background: #4f9d69;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  /* the narrow screen's card is a grid, which would show it hidden as well */
+  #card[hidden],
+  #cardKept[hidden] {
+    display: none;
+  }
+  #vfHelp .touch,
+  #help .touch {
     display: none;
   }
   @media (pointer: coarse) {
-    #vfHelp .keys {
+    #vfHelp .keys,
+    #help .keys {
       display: none;
     }
-    #vfHelp .touch {
+    #vfHelp .touch,
+    #help .touch {
       display: inline;
+    }
+    /* the touch help along the top, clear of the stick bottom left and the buttons bottom right */
+    #help {
+      top: calc(16px + env(safe-area-inset-top, 0px));
+      bottom: auto;
     }
   }
   @media (max-width: 600px) {
@@ -514,7 +546,7 @@
       transform: none;
     }
     #cardPrint {
-      grid-row: span 3;
+      grid-row: span 4;
       margin: 0;
       align-self: center;
     }
@@ -531,6 +563,10 @@
     #cardWords {
       margin: 0;
       font-size: 11px;
+    }
+    #cardKept {
+      margin: 2px 0;
+      font-size: 10px;
     }
     #cardTerms {
       display: none;
@@ -559,9 +595,254 @@
       bottom: calc(188px + env(safe-area-inset-bottom, 0px));
       right: calc(26px + env(safe-area-inset-right, 0px));
     }
-    /* the help line stays on a narrow screen, held inside it and wrapping rather than running off the edge */
+    /* on a narrow screen the album's button stands over the camera's, in the column of the camera's buttons, and
+       over the auto focus's in the viewfinder, so it is clear of the card along the bottom */
+    #albumBtn {
+      right: calc(16px + env(safe-area-inset-right, 0px));
+      bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    }
+    body.photo #albumBtn {
+      right: calc(26px + env(safe-area-inset-right, 0px));
+      bottom: calc(260px + env(safe-area-inset-bottom, 0px));
+    }
+    /* the help line stays on a narrow screen, held inside it and wrapping rather than running off the edge, and clear of
+       the column of the camera's buttons at the right */
     #help {
-      right: 16px;
+      right: calc(88px + env(safe-area-inset-right, 0px));
+    }
+  }
+  /* ---- the album: a page an oddity pictured, the picture redrawn inside a mount on the card's white ---- */
+  #album {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 16px 88px;
+    background: rgba(11, 10, 16, 0.9);
+    /* a swipe across the page is the page's, not the browser's */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #album[hidden] {
+    display: none;
+  }
+  #albumMount {
+    width: min(1100px, 100%);
+    height: min(780px, 100%);
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 18px 18px 12px;
+    background: #fbf8f1;
+    color: #26232d;
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  /* where the picture is drawn: the view is laid over it at the picture's own shape, as large as it goes and in its
+     middle, while the page has a picture; what it does not fill is the mount's */
+  #albumWindow {
+    min-height: 0;
+  }
+  /* the page of nothing pictured: a frame round its words, in the middle of the space a picture would have */
+  #albumEmpty {
+    align-self: center;
+    justify-self: center;
+    max-width: 30em;
+    display: grid;
+    gap: 6px;
+    padding: 24px 32px;
+    text-align: center;
+    color: #4d4855;
+    border: 1.5px dashed #d9d3c7;
+    border-radius: 2px;
+  }
+  #albumEmpty b {
+    font-size: 18px;
+    color: #26232d;
+  }
+  #albumEmpty kbd {
+    font: inherit;
+    font-weight: 700;
+    color: #26232d;
+    background: #eee9df;
+    border-radius: 5px;
+    padding: 0 6px;
+  }
+  #albumEmpty .touch {
+    display: none;
+  }
+  #albumEmpty[hidden],
+  #albumWindow[hidden],
+  #albumCaption [hidden] {
+    display: none;
+  }
+  #albumCaption {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
+    gap: 4px 24px;
+    align-items: start;
+  }
+  #albumCaption .head {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  #albumTotal {
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  #albumCaption .of {
+    color: #8a8592;
+    font-size: 14px;
+  }
+  #albumStars {
+    margin-left: 10px;
+    font-size: 22px;
+    color: #e8a21c;
+    letter-spacing: 2px;
+  }
+  #albumName {
+    margin-top: 4px;
+    font-weight: 600;
+    font-size: 16px;
+    text-transform: capitalize;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #albumTerms {
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 4px 10px;
+    padding-top: 4px;
+  }
+  /* at the right whatever else the page shows, the page of nothing pictured among it */
+  #albumTurn {
+    grid-column: -2;
+    grid-row: 1;
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    font-size: 13px;
+    color: #67626f;
+    white-space: nowrap;
+  }
+  #albumTurn .pages {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pageBtn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #26232d;
+    background: transparent;
+    color: #26232d;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pageBtn:disabled {
+    border-color: #d9d3c7;
+    color: #d9d3c7;
+    cursor: default;
+  }
+  #albumKeys kbd {
+    font: inherit;
+    font-weight: 700;
+    color: #26232d;
+    background: #eee9df;
+    border-radius: 5px;
+    padding: 0 6px;
+  }
+  /* the album's button closes it while it is open, and says so with a cross in place of the book */
+  #albumBtn .shut,
+  body.album #albumBtn .book {
+    display: none;
+  }
+  body.album #albumBtn .shut {
+    display: block;
+  }
+  #albumSmall {
+    grid-column: 1 / -1;
+    margin: 4px 0 0;
+    font-size: 11px;
+    color: #8a8592;
+  }
+  /* the album open: nothing of the game's own over it but its button, which closes it, in the corner */
+  body.album #vf,
+  body.album .panel,
+  body.album .stick,
+  body.album #card,
+  body.album .round:not(#albumBtn) {
+    display: none !important;
+  }
+  body.album #albumBtn {
+    z-index: 7;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    background: rgba(255, 255, 255, 0.9);
+    color: #15131c;
+  }
+  @media (pointer: coarse) {
+    #albumEmpty .keys,
+    #albumKeys {
+      display: none;
+    }
+    #albumEmpty .touch {
+      display: inline;
+    }
+  }
+  @media (max-width: 600px) {
+    /* the mount the whole width, under the album's button, and the words stacked under the picture */
+    #album {
+      padding: calc(80px + env(safe-area-inset-top, 0px)) 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    }
+    #albumMount {
+      height: 100%;
+      gap: 8px;
+      padding: 10px 10px 8px;
+    }
+    #albumCaption {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 12px;
+    }
+    #albumTotal {
+      font-size: 28px;
+    }
+    #albumStars {
+      font-size: 16px;
+    }
+    #albumName {
+      font-size: 14px;
+    }
+    #albumTerms {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      font-size: 10px;
+      gap: 2px 8px;
+    }
+    #albumTurn {
+      grid-row: 1;
+      grid-column: 2;
+      font-size: 12px;
+    }
+    #albumSmall {
+      font-size: 10px;
+    }
+  }
+  /* a thumb's page buttons, on a narrow screen or a touch one: forty-four pixels, as a finger wants */
+  @media (max-width: 600px), (pointer: coarse) {
+    .pageBtn {
+      width: 44px;
+      height: 44px;
     }
   }
 </style>
@@ -583,12 +864,16 @@
   <canvas id="cardPrint" width="240" height="150"></canvas>
   <div class="head"><span id="cardTotal">0</span><span class="of">/ 100</span><span id="cardStars"></span></div>
   <div id="cardName"></div>
+  <div id="cardKept" hidden></div>
   <div id="cardWords"></div>
-  <div id="cardTerms"></div>
+  <div id="cardTerms" class="terms"></div>
 </div>
 <div class="panel" id="help" hidden>
-  <span>WASD</span> or arrows to drive · drag or <span>Q</span> <span>E</span> to look around · wheel to zoom ·
-  <span>F</span> camera · <span>M</span> mute
+  <span class="keys"
+    ><span>WASD</span> or arrows to drive · drag or <span>Q</span> <span>E</span> to look around · wheel to zoom ·
+    <span>F</span> camera · <span>Tab</span> album · <span>M</span> mute</span
+  >
+  <span class="touch">the stick to drive · drag to look around · pinch to zoom</span>
 </div>
 <div class="panel" id="vfHelp" hidden>
   <span class="keys"
@@ -610,6 +895,62 @@
     <circle cx="12" cy="13.2" r="3.4" />
   </svg>
 </button>
+<button class="round" id="albumBtn" type="button" tabindex="-1" aria-label="Album" title="Album (Tab)" hidden>
+  <svg
+    class="book"
+    width="26"
+    height="26"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linejoin="round"
+  >
+    <path d="M12 7c-2-1.6-5-2.1-8-1.6v12.8c3-.5 6 0 8 1.6 2-1.6 5-2.1 8-1.6V5.4c-3-.5-6 0-8 1.6z" />
+    <path d="M12 7v12.8" />
+  </svg>
+  <svg class="shut" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" />
+  </svg>
+</button>
+<div id="album" hidden>
+  <div id="albumMount">
+    <div id="albumWindow"></div>
+    <div id="albumEmpty" hidden>
+      <b>Nothing pictured yet</b>
+      <span class="keys"
+        >Drive up to an oddity, <kbd>F</kbd> to raise the camera and <kbd>Space</kbd> to take its picture.</span
+      >
+      <span class="touch">Drive up to an oddity, tap the camera and then the shutter.</span>
+      <span>The best picture of each is kept here.</span>
+    </div>
+    <div id="albumCaption">
+      <div id="albumGrade">
+        <div class="head"><span id="albumTotal">0</span><span class="of">/ 100</span><span id="albumStars"></span></div>
+        <div id="albumName"></div>
+      </div>
+      <div id="albumTerms" class="terms"></div>
+      <div id="albumTurn">
+        <span id="albumCount"></span>
+        <div class="pages">
+          <button class="pageBtn" id="albumPrev" type="button" tabindex="-1" aria-label="The page before">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+          </button>
+          <span id="albumPage"></span>
+          <button class="pageBtn" id="albumNext" type="button" tabindex="-1" aria-label="The page after">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+        <span class="keys" id="albumKeys"><kbd>Esc</kbd> to close · <kbd>←</kbd> <kbd>→</kbd> to turn</span>
+      </div>
+      <p id="albumSmall">Redrawn from the lens as it was; the rover and its tracks are not in it.</p>
+    </div>
+  </div>
+</div>
 <button class="round" id="afBtn" type="button" tabindex="-1" aria-label="Auto focus" title="Auto focus (A)" hidden>
   AF
 </button>

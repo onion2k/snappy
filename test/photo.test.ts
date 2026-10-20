@@ -4,13 +4,14 @@
  * the picture and telling of it. The grade's own terms are `score.test.ts`'s, and the viewfinder's `viewfinder.test.ts`'s.
  */
 import { describe, expect, it } from 'vitest';
+import type { Keeping } from '../src/album';
 import { Game, type GameEvents } from '../src/game';
 import { checkInvariants } from '../src/invariants';
 import { ufoBob } from '../src/models/oddities';
 import { Progress, memoryStore } from '../src/progress';
 import { seeded } from '../src/random';
 import type { Grade } from '../src/score';
-import { LENS } from '../src/viewfinder';
+import { LENS, Shot } from '../src/viewfinder';
 import { FIXTURE_DUCK, FIXTURE_WATER, fixtureAt, fixtureWorld } from '../src/world/fixture';
 import { ODDITIES } from '../src/world/oddities';
 import { DT } from './helpers';
@@ -111,14 +112,13 @@ describe('the shutter', () => {
     expect(checkInvariants(game)).toEqual([]);
   });
 
-  it('grades into the one grade, kept for the card and the invariants, and saves nothing', () => {
+  it('grades into the one grade, kept for the card and the invariants', () => {
     const game = fixtureGame();
     atTheDuck(game);
     const a = game.shutter();
     const b = game.shutter();
     expect(a).toBe(b);
     expect(a).toBe(game.picture);
-    expect(Object.keys(game.progress.save).sort()).toEqual(['muted', 'volume']);
   });
 
   it('does nothing out of the viewfinder', () => {
@@ -150,6 +150,97 @@ describe('the shutter', () => {
   });
 });
 
+describe('the album, filled by the shutter', () => {
+  /** A game on the fixture telling what each picture came to, as the card reads it when told. */
+  function keeping() {
+    const told: string[] = [];
+    const events: GameEvents = {
+      photo: (g: Grade, kept: Keeping) => told.push(`${g.total} ${kept.kind} ${kept.index} ${kept.replaced}`),
+    };
+    const store = memoryStore();
+    const game = new Game(new Progress(store), { random: seeded(1), map, events });
+    return { game, told, store };
+  }
+  const duck = map.placements.findIndex((p) => p.kind === 'duck');
+
+  it('keeps the first picture of the duck, says so, and writes the save', () => {
+    const { game, told, store } = keeping();
+    atTheDuck(game);
+    const total = game.shutter()!.total;
+    expect(told).toEqual([`${total} first ${duck} 0`]);
+    expect(game.album.count).toBe(1);
+    expect(game.album.has(duck)).toBe(true);
+    expect(game.album.totalOf(duck)).toBe(total);
+    expect(game.album.timeOf(duck)).toBe(Math.round(game.t * 1000) / 1000);
+    expect(store.json, 'written when kept').not.toBe(null);
+    const saved = JSON.parse(store.json!) as { album: { name: string; total: number }[] };
+    expect(saved.album.map((e) => [e.name, e.total])).toEqual([['rubber duck 1', total]]);
+    expect(game.progress.save.album).toEqual(game.album.toSave());
+    expect(checkInvariants(game)).toEqual([]);
+  });
+
+  it('keeps the same picture again as nothing, and writes nothing', () => {
+    const { game, told, store } = keeping();
+    atTheDuck(game);
+    game.shutter();
+    const written = store.json;
+    store.json = 'untouched';
+    const total = game.shutter()!.total;
+    expect(told[1]).toBe(`${total} none ${duck} 0`);
+    expect(store.json).toBe('untouched');
+    expect(written).not.toBe(null);
+  });
+
+  it('keeps a better picture over a worse, and says what it beat', () => {
+    const { game, told } = keeping();
+    atTheDuck(game);
+    // out of focus first, the focus set by hand far past the duck
+    game.viewfinder.focusAt(0, 0.99, game.ground, null);
+    game.step(DT);
+    const blurred = game.shutter()!.total;
+    game.viewfinder.auto();
+    game.step(DT);
+    const sharp = game.shutter()!.total;
+    expect(sharp).toBeGreaterThan(blurred);
+    expect(blurred).toBeGreaterThan(0);
+    expect(told).toEqual([`${blurred} first ${duck} 0`, `${sharp} better ${duck} ${blurred}`]);
+    expect(game.album.totalOf(duck)).toBe(sharp);
+    // and the blurred one again is not kept over it
+    game.viewfinder.focusAt(0, 0.99, game.ground, null);
+    game.step(DT);
+    game.shutter();
+    expect(told[2]).toBe(`${blurred} none ${duck} 0`);
+    expect(game.album.totalOf(duck)).toBe(sharp);
+  });
+
+  it('keeps nothing of a picture of nothing, and nothing with the viewfinder down', () => {
+    const { game, told, store } = keeping();
+    game.photo(true);
+    game.viewfinder.look(0, 1);
+    game.step(DT);
+    game.shutter();
+    expect(told).toEqual(['0 none -1 0']);
+    game.photo(false);
+    expect(game.shutter()).toBe(null);
+    expect(told).toHaveLength(1);
+    expect(game.album.count).toBe(0);
+    expect(store.json).toBe(null);
+  });
+
+  it('keeps the album over a reload, the same to the last number', () => {
+    const { game, store } = keeping();
+    atTheDuck(game);
+    game.shutter();
+    const again = new Game(new Progress(memoryStore(store.json)), { random: seeded(2), map });
+    expect(again.album.toSave()).toEqual(game.album.toSave());
+    const a = new Shot(),
+      b = new Shot();
+    game.album.shotOf(duck, a, new Float64Array(2));
+    again.album.shotOf(duck, b, new Float64Array(2));
+    expect([...b.eye, ...b.v]).toEqual([...a.eye, ...a.v]);
+  });
+});
+
 describe('the UFOs', () => {
   it('bob by game time, each by its own vary, and nothing else is lifted', () => {
     const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
@@ -160,6 +251,24 @@ describe('the UFOs', () => {
     for (const i of ufos) expect(s.lift[i]).toBe(ufoBob(game.t, s.placements[i].vary));
     expect(new Set(ufos.map((i) => s.lift[i])).size).toBe(ufos.length);
     s.kinds.forEach((k, i) => k !== 'ufo' && expect(s.lift[i]).toBe(0));
+  });
+
+  it('can be lifted as they were at any time, for an album page, without moving the game', () => {
+    const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+    const s = game.subjects;
+    for (let f = 0; f < 40; f++) game.step(DT);
+    const now = Float64Array.from(s.lift);
+    // written over whatever was there, a UFO by its bob at that time and everything else at nought
+    const out = new Float64Array(s.count).fill(7);
+    game.liftsAt(2.25, out);
+    s.kinds.forEach((k, i) => expect(out[i]).toBe(k === 'ufo' ? ufoBob(2.25, s.placements[i].vary) : 0));
+    expect(out.some((v) => v !== 0)).toBe(true);
+    // the game's own lifts and time untouched
+    expect([...s.lift]).toEqual([...now]);
+    expect(game.t).toBeCloseTo(40 * DT, 12);
+    // and at the game's own time, the game's own lifts
+    game.liftsAt(game.t, out);
+    expect([...out]).toEqual([...now]);
   });
 
   it('are named as the world names them, as the test API reads them', () => {

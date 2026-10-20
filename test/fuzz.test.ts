@@ -29,6 +29,7 @@ describe('the fuzzer', () => {
     ])
       expect(r.done[action], action).toBeGreaterThan(0);
     expect(r.happened['pictures graded'], 'and takes a picture of something').toBeGreaterThan(0);
+    expect(r.happened['pictures kept'], 'and keeps one in the album, through its reloads').toBeGreaterThan(0);
     expect(
       Object.keys(r.done).some((k) => k.startsWith('set off for')),
       'sets off somewhere',

@@ -27,6 +27,7 @@ import { seeded } from '../src/random';
 import type { Drive } from '../src/rover';
 import { standable } from '../src/world/drive';
 import { route } from '../src/world/graph';
+import { seek } from './seek';
 
 const DT = 1 / 60;
 /** How many frames between checks, when nothing has just been done. */
@@ -83,8 +84,6 @@ export function fuzz(seed: number, frames: number): FuzzResult {
     };
     const { bounds } = game.ground;
     const lens = { position: new Float64Array(3), target: new Float64Array(3) };
-    /** An oddity's middle, for the monkey that goes looking for one. */
-    const odd = new Float64Array(3);
     /**
      * The viewfinder's camera, for the camera's rules: its eye, and as where it looks the rover's body it stands on,
      * so the line between is the mast and the head, which must not pass through the ground. What the lens looks at
@@ -96,6 +95,12 @@ export function fuzz(seed: number, frames: number): FuzzResult {
       lens.target[1] = game.rover.y;
       lens.target[2] = game.rover.z + 2;
       return lens;
+    };
+    /** The shutter pressed, and what came of it counted: graded or of nothing, and kept in the album or not. */
+    const press = () => {
+      const g = game.shutter()!;
+      count(happened, g.total > 0 ? 'pictures graded' : 'pictures of nothing');
+      if (game.album.last.kind !== 'none') count(happened, 'pictures kept');
     };
     /** Something only done in the viewfinder: nothing, and not counted, out of it. */
     const looking = (what: string, go: () => void) => () => {
@@ -200,35 +205,14 @@ export function fuzz(seed: number, frames: number): FuzzResult {
       [
         2,
         () => {
-          // a player out to photograph something: stood somewhere in sight of an oddity, a few of its heights off, and
-          // the view turned onto it, as a drag would. Shots at random are almost all of nothing, or of an oddity behind
-          // the trees, and a grade worth having is what the shutter's rules most need tried
+          // a player out to photograph something, as `seek.ts` puts them: a grade worth having, and a picture worth
+          // keeping, is what the shutter's rules and the album's most need tried
           const s = game.subjects;
           if (s.count === 0) return;
           const i = Math.floor(random() * s.count);
-          s.middle(i, odd);
-          for (let tries = 0; tries < 50; tries++) {
-            const reach = s.height[i] * between(3, 14) + s.radius[i],
-              bearing = between(0, Math.PI * 2);
-            const x = odd[0] + Math.cos(bearing) * reach,
-              y = odd[1] + Math.sin(bearing) * reach;
-            if (x < bounds.minX || x > bounds.maxX || y < bounds.minY || y > bounds.maxY) continue;
-            if (!standable(game.ground, x, y)) continue;
-            game.photo(false);
-            game.rover.teleport(x, y, bearing + Math.PI);
-            camera.snap(game.rover, game.ground);
-            game.photo(true);
-            const eye = game.viewfinder.eye;
-            const dx = odd[0] - eye[0],
-              dy = odd[1] - eye[1];
-            game.viewfinder.look(0, Math.atan2(odd[2] - eye[2], Math.sqrt(dx * dx + dy * dy)));
-            // and held still for the lens to settle before the shutter, as a player waits for the focus
-            for (let f = 0; f < 30; f++) game.step(DT);
-            const g = game.shutter()!;
-            count(happened, g.total > 0 ? 'pictures graded' : 'pictures of nothing');
-            did('seek');
-            return;
-          }
+          if (!seek(game, i, between, () => camera.snap(game.rover, game.ground))) return;
+          press();
+          did('seek');
         },
       ],
       [
@@ -236,17 +220,16 @@ export function fuzz(seed: number, frames: number): FuzzResult {
         looking('shutter', () => {
           // as often several times in a frame as once
           const presses = random() < 0.3 ? 3 : 1;
-          for (let k = 0; k < presses; k++) {
-            const g = game.shutter()!;
-            count(happened, g.total > 0 ? 'pictures graded' : 'pictures of nothing');
-          }
+          for (let k = 0; k < presses; k++) press();
         }),
       ],
       [
         1,
         () => {
-          // saved, and loaded again into a new game as a reload would: the save must come back as it was
+          // saved, and loaded again into a new game as a reload would: the save must come back as it was, and the
+          // album with it, every picture to the last number
           const before = JSON.stringify(game.progress.save);
+          const album = JSON.stringify(game.album.toSave());
           game.persist();
           store = memoryStore(store.json);
           game = new Game(new Progress(store), { random: seeded(seed + frame) });
@@ -254,6 +237,8 @@ export function fuzz(seed: number, frames: number): FuzzResult {
           pilot = null;
           const after = JSON.stringify(game.progress.save);
           if (after !== before) throw new Error(`the save was ${before} and loaded as ${after}`);
+          const back = JSON.stringify(game.album.toSave());
+          if (back !== album) throw new Error(`the album was ${album} and loaded as ${back}`);
           did('reload');
         },
       ],
@@ -296,6 +281,7 @@ export function fuzz(seed: number, frames: number): FuzzResult {
       }
     }
     happened['tracks held at the end'] = game.tracks.count;
+    happened['album at the end'] = game.album.count;
     return { seed, frames, failure: null, done, happened };
   } catch (err) {
     return fail([`threw: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`]);

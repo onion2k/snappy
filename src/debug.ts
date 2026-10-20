@@ -12,6 +12,7 @@
  * The types are shared with the smoke tests, so a test that calls something
  * that is not here does not compile.
  */
+import type { KeptKind } from './album';
 import { Brackets } from './brackets';
 import type { Game } from './game';
 import { checkInvariants } from './invariants';
@@ -104,6 +105,26 @@ export interface PhotoGrade {
   terms: Record<string, number>;
 }
 
+/** A picture taken, as the shutter tells of it: its grade, and what the album made of it. */
+export interface ShutterResult extends PhotoGrade {
+  /** Kept as the first of its oddity, kept over a worse one (`replaced` is that one's total), or not kept. */
+  kept: { kind: KeptKind; replaced: number };
+}
+
+/** The album as it stands: how many pictures it can hold and holds, and a page for each, in the world's order. */
+export interface AlbumState {
+  capacity: number;
+  count: number;
+  pages: { name: string; total: number; stars: number; t: number }[];
+}
+
+/** The album over the game: whether it is open, the page shown (counted from nought) and how many there are. */
+export interface AlbumOpenState {
+  open: boolean;
+  page: number;
+  pages: number;
+}
+
 /** The viewfinder as it stands, and what it brackets. */
 export interface ViewfinderView extends ViewfinderState {
   /** Where the focus mark is on the screen, across and up from the middle, minus one to one. */
@@ -175,14 +196,32 @@ export interface GameApi {
   focusAt(nx: number, ny: number): void;
   /** Back to auto focus, as A or the AF button does. */
   autoFocus(): void;
-  /** The shutter, as Space or the shutter button: the picture graded and its card shown; null out of the viewfinder. */
-  shutter(): PhotoGrade | null;
+  /**
+   * The shutter, as Space or the shutter button: the picture graded, kept in the album if it is the best yet of its
+   * oddity, and its card shown; null out of the viewfinder.
+   */
+  shutter(): ShutterResult | null;
   /** The viewfinder as it stands. */
   viewfinder(): ViewfinderView;
   /** Every oddity in the world, by name, where it is now. */
   oddities(): OddityState[];
   /** The rules that must always hold, broken; empty when all is well. */
   invariants(): string[];
+
+  /** The album: the best picture of each oddity, kept. */
+  album(): AlbumState;
+  /**
+   * The album opened over the game, which stops, or closed, and the game as it was, as Tab or the album button does.
+   * Opening resolves once the first page's picture is drawn with everything it needs built.
+   */
+  openAlbum(on: boolean): Promise<void>;
+  /**
+   * The open album turned to page `n`, counted from nought, the nearest there is, as the arrows or a swipe turn it.
+   * Resolves once the page's frame is drawn and the GPU has finished it, so the time it takes is a page turn's.
+   */
+  albumPage(n: number): Promise<void>;
+  /** Whether the album is open, and its page. */
+  albumState(): AlbumOpenState;
 
   /** The save written now, and what it is. */
   save(): string;
@@ -234,6 +273,11 @@ export interface DebugHost {
   raise(on: boolean): Promise<void>;
   /** Whether the viewfinder's frame is blurred now: false at a rung that has given the blur up. */
   blurred(): boolean;
+  /** The album opened or closed by the page, as Tab does. */
+  openAlbum(on: boolean): Promise<void>;
+  /** The open album turned to page `n`; resolves once its frame is drawn and finished. */
+  albumPage(n: number): Promise<void>;
+  albumState(): AlbumOpenState;
 }
 
 /** A grade as plain numbers, with the name of what it is of. */
@@ -329,7 +373,10 @@ export function createApi(host: DebugHost): GameApi {
     },
     shutter() {
       const g = game.shutter();
-      return g ? photoGrade(game, g) : null;
+      if (!g) return null;
+      // read at once, as the next picture writes it again
+      const { kind, replaced } = game.album.last;
+      return { ...photoGrade(game, g), kept: { kind, replaced } };
     },
     viewfinder() {
       const vf = game.viewfinder;
@@ -368,6 +415,21 @@ export function createApi(host: DebugHost): GameApi {
       const camera = vf.active ? { position: vf.eye, target: [r.x, r.y, r.z + 2] } : host.camera();
       return checkInvariants(game, camera);
     },
+
+    album() {
+      const a = game.album;
+      const at = new Int32Array(a.capacity);
+      const n = a.pictured(at);
+      const pages: AlbumState['pages'] = [];
+      for (let k = 0; k < n; k++) {
+        const i = at[k];
+        pages.push({ name: a.nameOf(i), total: a.totalOf(i), stars: a.starsOf(i), t: a.timeOf(i) });
+      }
+      return { capacity: a.capacity, count: a.count, pages };
+    },
+    openAlbum: (on) => host.openAlbum(on),
+    albumPage: (n) => host.albumPage(n),
+    albumState: () => host.albumState(),
 
     save() {
       game.persist();

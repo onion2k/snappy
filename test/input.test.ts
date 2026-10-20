@@ -87,6 +87,42 @@ describe('the keys', () => {
     expect(press('ArrowUp', { repeat: true }).defaultPrevented).toBe(true);
   });
 
+  it('drive nothing while shut, as over the album, and nothing held when it shut or pressed while it was drives after', () => {
+    const { input, press, lift } = setup();
+    // the arrows held to turn the album's pages, and W held from driving up to it
+    press('KeyW');
+    press('KeyQ');
+    input.stick.press(1, 0, -STICK.radius, 0, 0);
+    input.shut = true;
+    expect(input.read(), 'what was held when it shut is let go').toEqual({ throttle: 0, steer: 0 });
+    expect(input.look()).toBe(0);
+    expect(input.stick.held).toBe(false);
+    press('ArrowLeft');
+    press('ArrowRight');
+    press('KeyD');
+    expect(input.read(), 'pressed while shut').toEqual({ throttle: 0, steer: 0 });
+    // the arrows still kept from scrolling the page behind the album
+    expect(press('ArrowUp').defaultPrevented).toBe(true);
+    input.shut = false;
+    expect(input.read(), 'and still held as it opens again').toEqual({ throttle: 0, steer: 0 });
+    press('ArrowLeft', { repeat: true });
+    expect(input.read().steer, 'a held arrow repeating is not a press').toBe(0);
+    lift('ArrowLeft');
+    lift('KeyW');
+    // a fresh press after drives, as ever
+    press('KeyW');
+    expect(input.read().throttle).toBe(1);
+    expect(input.shut).toBe(false);
+  });
+
+  it('are let go again when it opens, of anything pressed while shut that slipped through', () => {
+    const { input, press } = setup();
+    input.shut = true;
+    press('KeyS');
+    input.shut = false;
+    expect(input.read().throttle).toBe(0);
+  });
+
   it("take no notice of a key pressed with the command or control key, which is the browser's", () => {
     const { input, press } = setup();
     press('KeyW', { metaKey: true });

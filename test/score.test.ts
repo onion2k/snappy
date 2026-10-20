@@ -17,12 +17,13 @@ import {
   grade,
   gradeProblems,
   inView,
+  shotBlur,
   starsOf,
   weakest,
 } from '../src/score';
 import { Subjects } from '../src/sight';
 import { SUN } from '../src/sun';
-import { FOCUS, LENS, Shot, fovOf } from '../src/viewfinder';
+import { FOCUS, LENS, Shot, focusDepthOf, fovOf } from '../src/viewfinder';
 import { FIXTURE_DUCK, FIXTURE_GNOME, FIXTURE_WATER, fixtureAt, fixtureWorld } from '../src/world/fixture';
 import { groundOf } from '../src/world/ground';
 import type { Placement } from '../src/world/types';
@@ -733,5 +734,30 @@ describe('the depth of field the blur is drawn with', () => {
   it('is no blur at all where the lens cannot focus', () => {
     depthOfField(50, LENS.aperture, 0.1, REACH, out);
     expect([...out]).toEqual([0, 0]);
+  });
+
+  it('is laid on a shot as the viewfinder lays it: the band and strength at the focus mark’s depth, and the depth', () => {
+    // one sum for the viewfinder and the album's pages, so a page kept is blurred as the picture was taken
+    const shot = new Shot();
+    shot.focal = 85;
+    shot.aspect = 1.6;
+    shot.focus = 24;
+    shot.aperture = LENS.aperture;
+    const mark = new Float64Array([0.4, -0.3]);
+    const blur = new Float64Array(3);
+    shotBlur(shot, mark, REACH, blur);
+    const depth = focusDepthOf(shot, mark);
+    expect(depth).toBeLessThan(24);
+    expect(blur[2]).toBe(depth);
+    depthOfField(85, LENS.aperture, depth, REACH, out);
+    expect([blur[0], blur[1]]).toEqual([out[0], out[1]]);
+    // the shot's own aperture, not the lens's
+    shot.aperture = 8;
+    shotBlur(shot, mark, REACH, blur);
+    depthOfField(85, 8, depth, REACH, out);
+    expect([blur[0], blur[1]]).toEqual([out[0], out[1]]);
+    // in the middle the depth is the focus
+    shotBlur(shot, new Float64Array(2), REACH, blur);
+    expect(blur[2]).toBe(24);
   });
 });

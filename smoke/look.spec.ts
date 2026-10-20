@@ -16,7 +16,7 @@
  * A failure leaves the picture, what was drawn and the difference in
  * `test-results/`. Look at all three before deciding which is right.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { start, watch } from './game';
 import { GAME_VIEWS, placeView } from './views';
@@ -83,6 +83,25 @@ test.describe('what it looks like', () => {
       await expect(page.locator('#view')).toHaveScreenshot(`${name}.png`, TOLERANCE);
       expect(problems).toEqual([]);
     });
+
+  // An album page (the album's fourth criterion): the duck on the mill pond as a save from the album's corpus keeps it,
+  // redrawn at its lens and its moment with no rover and no tracks, in its mount, the page whole. Written only through
+  // `/gate-moved` or asked for by name (`--update-snapshots -g album`); until it is, skipped, as the scenes are.
+  test('the album: a page', async ({ page }, info) => {
+    test.skip(
+      !existsSync('smoke/screens/album.png') && ['none', 'missing'].includes(info.config.updateSnapshots),
+      'no picture yet: written through /gate-moved',
+    );
+    const problems = watch(page);
+    const corpus = JSON.parse(readFileSync('test/saves/04-album.json', 'utf8')) as { album: { name: string }[] };
+    const album = corpus.album.filter((e) => e.name === 'mill pond duck');
+    await start(page, { save: { muted: false, volume: 0.8, album }, seed: 1, paused: true });
+    await page.evaluate(() => window.game!.openAlbum(true));
+    expect(await page.evaluate(() => window.game!.albumState())).toEqual({ open: true, page: 0, pages: 1 });
+    await hideStats(page);
+    await expect(page).toHaveScreenshot('album.png', TOLERANCE);
+    expect(problems).toEqual([]);
+  });
 
   test('a small thing added to the picture is a change', async ({ page }, info) => {
     // while the pictures are being written this would write its own, button and all, over the start's

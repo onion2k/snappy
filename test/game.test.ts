@@ -43,7 +43,7 @@ describe('the game', () => {
     settle(game);
     expect(store.json).toBe(null);
     game.persist();
-    expect(store.json).toBe(JSON.stringify({ muted: false, volume: 1 }));
+    expect(store.json).toBe(JSON.stringify({ muted: false, volume: 1, album: [] }));
   });
 
   it('takes its chance from the source it is given, and can be handed another', () => {

@@ -6,7 +6,18 @@
 import { describe, expect, it } from 'vitest';
 import { HEAD } from '../src/rover';
 import { Subjects } from '../src/sight';
-import { EYE, FOCUS, LENS, LOOK, Shot, ViewFrame, Viewfinder, fovOf, viewfinderProblems } from '../src/viewfinder';
+import {
+  EYE,
+  FOCUS,
+  LENS,
+  LOOK,
+  Shot,
+  ViewFrame,
+  Viewfinder,
+  aimOf,
+  fovOf,
+  viewfinderProblems,
+} from '../src/viewfinder';
 import { FIXTURE_DUCK, FIXTURE_WATER, fixtureAt, fixtureWorld } from '../src/world/fixture';
 import { groundOf } from '../src/world/ground';
 import type { Ground, Placement } from '../src/world/types';
@@ -147,6 +158,33 @@ describe('the lens', () => {
 });
 
 describe('the frame', () => {
+  it('is aimed along the look from the eye, as far ahead as asked, for the renderer’s camera', () => {
+    const s = new Shot();
+    s.eye.set([10, 20, 3]);
+    const out = new Float64Array(3);
+    const aim = (yaw: number, pitch: number, ahead = 10) => {
+      s.yaw = yaw;
+      s.pitch = pitch;
+      aimOf(s, ahead, out);
+      return [...out].map((v) => Math.round(v * 1e9) / 1e9);
+    };
+    expect(aim(0, 0)).toEqual([20, 20, 3]);
+    expect(aim(Math.PI / 2, 0)).toEqual([10, 30, 3]);
+    expect(aim(Math.PI, 0, 4)).toEqual([6, 20, 3]);
+    expect(aim(0, Math.PI / 2)).toEqual([10, 20, 13]);
+    expect(aim(-Math.PI / 2, -Math.PI / 6, 2)).toEqual([10, 18.267949192, 2]);
+    // the look's way, whatever the turn: what the frame puts in its middle
+    const f = new ViewFrame();
+    s.yaw = 0.7;
+    s.pitch = -0.3;
+    f.of(s);
+    aimOf(s, 25, out);
+    expect(f.project(out)).toBe(true);
+    expect(f.at[0]).toBeCloseTo(0, 9);
+    expect(f.at[1]).toBeCloseTo(0, 9);
+    expect(f.at[2]).toBeCloseTo(25, 9);
+  });
+
   it('puts what is straight ahead in the middle, and what is up and right up and right', () => {
     const shot = new Shot();
     shot.yaw = Math.PI / 2;

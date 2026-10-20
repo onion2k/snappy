@@ -13,10 +13,19 @@
  * depth of field is laid on the frame from the focus, and the marks over it
  * (`hud.ts`) from what `Brackets` says; out of it, the post is the look's
  * own again, the very record it was.
+ *
+ * The album (Tab, or the album button) opens over the game and stops it, from driving or from the viewfinder, and
+ * closing it goes back to exactly that. Its page's picture is drawn by the same renderer and scene as the game, at the
+ * lens and the moment the album kept (`drawPage`): the view laid over the mount's window, the camera at the kept eye
+ * through the kept lens, the blur from the kept focus, the clouds, sails, grass and UFOs at the kept time, and the
+ * rover and its tracks left out, as they are not kept. Settled, so a page is the same picture every time it is drawn.
  */
 import { createContext } from 'artshape-render/gpu/context';
 import { FOCUS_REACH, type Focus } from 'artshape-render/game/focus';
 import { GameRenderer, type Post } from 'artshape-render/game/renderer';
+import { AlbumMode, albumKey } from './albummode';
+import { swipeTurn } from './albumpages';
+import { AlbumView } from './albumview';
 import { Brackets } from './brackets';
 import { ChaseCamera, dragOrbit } from './camera';
 import { createApi, type CameraState } from './debug';
@@ -28,10 +37,10 @@ import { daylight } from './look';
 import { WIND } from './models/grass';
 import { Progress } from './progress';
 import { seeded } from './random';
-import { Scene } from './scene';
-import { depthOfField } from './score';
+import { Scene, type Played } from './scene';
+import { shotBlur } from './score';
 import { FrameRung, RUNG_STEPS } from './view';
-import { LENS } from './viewfinder';
+import { Shot, aimOf, fovOf } from './viewfinder';
 import { GameSound, LazySound } from './sound';
 import { mountStick } from './touch';
 
@@ -66,6 +75,8 @@ const vfHelp = document.getElementById('vfHelp')!;
 const cameraBtn = document.getElementById('cameraBtn') as HTMLButtonElement;
 const shutterBtn = document.getElementById('shutterBtn') as HTMLButtonElement;
 const afBtn = document.getElementById('afBtn') as HTMLButtonElement;
+const albumBtn = document.getElementById('albumBtn') as HTMLButtonElement;
+const stage = document.getElementById('stage')!;
 
 main().catch((err: unknown) => {
   bootMsg.textContent = err instanceof Error ? err.message : String(err);
@@ -137,8 +148,8 @@ async function main() {
   /** The look's own post, kept to be put back exactly on leaving; and the one the viewfinder draws with. */
   let lookPost: Post = renderer.post;
   const lensFocus: Focus = { distance: 50, band: 0, strength: 0 };
-  /** The depth of field's band and strength, worked out each frame from the lens (`depthOfField`). */
-  const dof = new Float64Array(2);
+  /** The depth of field's band, strength and depth, worked out each frame from the lens (`shotBlur`). */
+  const dof = new Float64Array(3);
   /** Where the renderer's camera is aimed in the viewfinder, along the look from the eye. */
   const vfTarget = new Float64Array(3);
   /** Whether the page is showing the viewfinder: it follows the game's, whoever raised it. */
@@ -153,13 +164,15 @@ async function main() {
    * whole for the half second it took to be cut again (photo review, 14).
    */
   let settleCut = false;
+  /** The album over the game: whether it is open, its pages, and what the game was when it was opened. */
+  const mode = new AlbumMode<Post>(game.album.capacity, renderer.post);
   game.events = {
-    photo(g) {
+    photo(g, kept) {
       const name = g.best >= 0 ? game.oddityNames[g.best] : null;
       // the picture as taken: drawn now, so the canvas holds this frame while the print is copied from it in this task
       draw(0);
       hud.flash();
-      hud.card(g, name, canvas);
+      hud.card(g, name, canvas, kept);
       sound.shutter();
       eventLog.push(`photo ${g.total} ${name ?? 'nothing'}`);
     },
@@ -196,12 +209,26 @@ async function main() {
     if (!paused) game.shutter();
   };
   // a button never takes the keyboard's focus, so Space is always the shutter and never a press of the last button
-  for (const b of [cameraBtn, shutterBtn, afBtn]) b.addEventListener('pointerdown', (e) => e.preventDefault());
+  const albumView = new AlbumView();
+  for (const b of [cameraBtn, shutterBtn, afBtn, albumBtn, albumView.prev, albumView.next])
+    b.addEventListener('pointerdown', (e) => e.preventDefault());
   cameraBtn.addEventListener('click', () => setPhoto(!game.photographing));
   shutterBtn.addEventListener('click', press);
   afBtn.addEventListener('click', () => game.viewfinder.auto());
+  albumBtn.addEventListener('click', () => void openAlbum(!mode.open));
+  albumView.prev.addEventListener('click', () => turnPage(-1));
+  albumView.next.addEventListener('click', () => turnPage(1));
   addEventListener('keydown', (e) => {
-    if (!booted || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!booted || e.metaKey || e.ctrlKey || e.altKey) return;
+    // Tab is the album's, and never moves the keyboard's focus about the page, held down or not; while the album is
+    // open only its own keys work (and M, which is the sound's), as `albumKey` says
+    if (e.code === 'Tab') e.preventDefault();
+    const act = albumKey(e.code, e.repeat, mode.open);
+    if (act === 'open') void openAlbum(true);
+    else if (act === 'close') void openAlbum(false);
+    else if (act === 'prev') turnPage(-1);
+    else if (act === 'next') turnPage(1);
+    if (act !== 'game' || e.repeat) return;
     if (e.code === 'KeyF') setPhoto(!game.photographing);
     else if (e.code === 'Escape') setPhoto(false);
     else if (!game.photographing) return;
@@ -218,6 +245,7 @@ async function main() {
     'wheel',
     (e) => {
       e.preventDefault();
+      if (mode.open) return;
       // in the viewfinder the wheel is the lens: turned toward the player, a longer one
       if (game.photographing) {
         game.viewfinder.zoomBy(Math.exp(-e.deltaY * WHEEL_ZOOM));
@@ -241,6 +269,8 @@ async function main() {
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
   canvas.addEventListener('pointerdown', (e) => {
+    // over an album page the view is its picture, and a drag on it is a swipe, which the album takes
+    if (mode.open) return;
     fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     // kept to the view as it is dragged off it, where the browser can: it refuses a pointer it has already let go of
     try {
@@ -318,10 +348,18 @@ async function main() {
     cam.aspect = width / height;
     scene.lens[0] = cam.fov;
     scene.lens[1] = cam.aspect;
-    game.viewfinder.aspect = cam.aspect;
+    // an album page's shape is the picture's own, and not the viewfinder's, which is the screen's
+    if (!mode.open) game.viewfinder.aspect = cam.aspect;
     renderer.resize(width, height);
   };
-  addEventListener('resize', resize);
+  addEventListener('resize', () => {
+    // with the album open, its window and the view over it laid again, and the page drawn at its new shape
+    if (mode.open) {
+      albumView.lay(stage, mode.pages.oddity >= 0, albumShot.aspect);
+      resize();
+      drawPage();
+    } else resize();
+  });
   resize();
 
   /** Whether a frame is being measured: the frame loop stands still while one is. */
@@ -404,18 +442,14 @@ async function main() {
     const vf = game.viewfinder;
     if (showing) {
       // the rover's own eye, looking along the view, through the lens's field
-      const cp = Math.cos(vf.pitch);
       eye = vf.eye;
-      vfTarget[0] = eye[0] + Math.cos(vf.yaw) * cp * AIM_AHEAD;
-      vfTarget[1] = eye[1] + Math.sin(vf.yaw) * cp * AIM_AHEAD;
-      vfTarget[2] = eye[2] + Math.sin(vf.pitch) * AIM_AHEAD;
+      aimOf(vf.shot, AIM_AHEAD, vfTarget);
       target = vfTarget;
       cam.fov = vf.fov;
       scene.lens[0] = cam.fov;
       // the blur from the lens: what the grade calls sharp drawn sharp, and the rest as blurred as it says
-      const depth = vf.focusDepth;
-      depthOfField(vf.focal, LENS.aperture, depth, FOCUS_REACH, dof);
-      lensFocus.distance = depth;
+      shotBlur(vf.shot, vf.mark, FOCUS_REACH, dof);
+      lensFocus.distance = dof[2];
       lensFocus.band = dof[0];
       // a strength of nought runs no pass at all: the rung's relief is the whole of the blur's cost
       lensFocus.strength = lensBlur ? dof[1] : 0;
@@ -438,6 +472,151 @@ async function main() {
     smoothed += (performance.now() - t - smoothed) * 0.05;
     if (frames % 30 === 0) stats.textContent = `${smoothed.toFixed(1)} ms`;
   }
+  // ---- the album: its pages, and a page's picture drawn as it was taken ----
+
+  const pages = mode.pages;
+  /** The album's post: the look's, with the page's blur. */
+  const albumFocus: Focus = { distance: 50, band: 0, strength: 0 };
+  /** The kept picture's lens, its focus mark, where the camera is aimed along it, and its blur. */
+  const albumShot = new Shot();
+  const albumMark = new Float64Array(2);
+  const albumTarget = new Float64Array(3);
+  const albumBlur = new Float64Array(3);
+  /**
+   * The game as the scene reads it for a page, at the moment the picture was taken: its time, and the UFOs where their
+   * bob had them then. The rover and the tracks are the game's own, and left out of the drawing (`hidePlayer`).
+   */
+  const albumLift = new Float64Array(game.subjects.count);
+  const albumPlayed: Played = { rover: game.rover, tracks: game.tracks, t: 0, subjects: { lift: albumLift } };
+
+  /**
+   * The page's picture drawn: the scene at the kept eye, aimed along the kept look as the viewfinder aims, through the
+   * kept lens's vertical field of view at the picture's own shape (the view is laid over the mount at that shape, so
+   * all of what was taken shows and nothing it did not), blurred from the kept focus and mark as the viewfinder blurs
+   * (and not at a rung that gave the blur up), at the kept time, with no rover and no tracks; settled, so it is the same
+   * every time. The grass's trample is left out of the frame, as the rover's history of this session and not the
+   * picture's, and the grain rolled to the kept time, so a page drawn before a reload is the page drawn after it; both
+   * are put back for the game's frames. The page of nothing pictured draws the game as it stands behind the album.
+   */
+  function drawPage() {
+    const i = pages.oddity;
+    if (i < 0) {
+      scene.hidePlayer = false;
+      draw(0);
+      return;
+    }
+    const album = game.album;
+    album.shotOf(i, albumShot, albumMark);
+    const t = album.timeOf(i);
+    albumPlayed.t = t;
+    game.liftsAt(t, albumLift);
+    const eye = albumShot.eye;
+    aimOf(albumShot, AIM_AHEAD, albumTarget);
+    cam.fov = fovOf(albumShot.focal);
+    cam.aspect = albumShot.aspect;
+    scene.lens[0] = cam.fov;
+    scene.lens[1] = cam.aspect;
+    shotBlur(albumShot, albumMark, FOCUS_REACH, albumBlur);
+    albumFocus.distance = albumBlur[2];
+    albumFocus.band = albumBlur[0];
+    albumFocus.strength = lensBlur ? albumBlur[1] : 0;
+    for (let k = 0; k < 3; k++) {
+      cam.target[k] = albumTarget[k];
+      cam.position[k] = eye[k];
+    }
+    renderer.time = t;
+    scene.hidePlayer = true;
+    scene.frame(albumPlayed, eye, albumTarget, 0, true);
+    cam.update();
+    const clock = renderer.postClock;
+    renderer.postClock = t;
+    renderer.economy.trample = false;
+    renderer.frame(ctx.context.getCurrentTexture().createView(), 'redraw', 0);
+    renderer.economy.trample = true;
+    renderer.postClock = clock;
+  }
+
+  /**
+   * The page `pages` stands on written and drawn, the view laid over its window at the picture's shape, and sized again
+   * if that moved it.
+   */
+  function showPage() {
+    const i = pages.oddity;
+    if (i >= 0) game.album.shotOf(i, albumShot, albumMark);
+    albumView.write(game.album, pages);
+    if (albumView.lay(stage, i >= 0, albumShot.aspect)) resize();
+    drawPage();
+  }
+
+  /** A page turned on or back, if there is one that way: the album does not go round from either end. */
+  function turnPage(by: number) {
+    if (mode.turn(by)) showPage();
+  }
+
+  /**
+   * The album opened over the game, stopped, at its first page; or closed, and the game exactly as it was, as the
+   * album's mode kept it: stopped or not, in the viewfinder or not, its post, the time not moved, and the frame drawn
+   * at the chase camera or the lens again, settled. The drive hears no keys while it is open, so the arrows that turn
+   * its pages do not steer, and nothing held as it opens or closes drives after. Resolves once the page's picture is
+   * drawn with everything it needs built, its blur's passes among them.
+   */
+  async function openAlbum(on: boolean): Promise<void> {
+    if (!booted) return;
+    if (on) {
+      if (!mode.enter(paused, game.photographing, renderer.post, game.album)) return;
+      paused = true;
+      input.shut = true;
+      fingers.clear();
+      swipe.id = -1;
+      hud.hideCard();
+      // the look's own post, which the viewfinder keeps aside while it is up, with the page's blur on it
+      renderer.post = { ...(showing ? lookPost : renderer.post), focus: albumFocus };
+      albumBtn.setAttribute('aria-label', 'Close the album');
+      albumBtn.title = 'Close the album (Tab or Esc)';
+      albumView.show(true);
+      showPage();
+      // a page's blur is drawn by passes the frame may not have built yet: until they are, it is drawn sharp
+      await renderer.prepare();
+      // it may have been closed while the passes were built
+      if (mode.open) drawPage();
+      return;
+    }
+    const before = mode.leave();
+    if (!before) return;
+    input.shut = false;
+    albumView.show(false);
+    albumView.lay(stage, false, 0);
+    albumBtn.setAttribute('aria-label', 'Album');
+    albumBtn.title = 'Album (Tab)';
+    // nothing the player can do raises or lowers the viewfinder while the album is open; the test API could
+    if (game.photographing !== before.photographing) setPhoto(before.photographing);
+    else renderer.post = before.post;
+    scene.hidePlayer = false;
+    resize();
+    cam.fov = showing ? game.viewfinder.fov : CHASE_FOV;
+    scene.lens[0] = cam.fov;
+    paused = before.paused;
+    // the frame drawn back where the game is, and what the page cut or pressed settled at once there
+    settleCut = true;
+    draw(0);
+  }
+
+  // a swipe across an open album turns its page: a press and its lift, far enough across
+  const swipe = { id: -1, x: 0, y: 0 };
+  addEventListener('pointerdown', (e) => {
+    if (!mode.open) return;
+    swipe.id = e.pointerId;
+    swipe.x = e.clientX;
+    swipe.y = e.clientY;
+  });
+  addEventListener('pointerup', (e) => {
+    if (!mode.open || e.pointerId !== swipe.id) return;
+    swipe.id = -1;
+    const by = swipeTurn(e.clientX - swipe.x, e.clientY - swipe.y);
+    if (by !== 0) turnPage(by);
+  });
+  addEventListener('pointercancel', () => (swipe.id = -1));
+
   // the first frame drawn before the page is ready, so everything it compiles is in
   draw(0);
   await renderer.prepare();
@@ -446,6 +625,7 @@ async function main() {
   stats.hidden = false;
   help.hidden = false;
   cameraBtn.hidden = false;
+  albumBtn.hidden = false;
 
   // ---- the test API, and the frame loop ----
 
@@ -523,6 +703,12 @@ async function main() {
     mute: setMuted,
     events: eventLog,
     blurred: () => showing && lensBlur,
+    openAlbum,
+    async albumPage(n) {
+      if (mode.go(n)) showPage();
+      await ctx.device.queue.onSubmittedWorkDone();
+    },
+    albumState: () => ({ open: mode.open, page: pages.page, pages: pages.pages }),
     async raise(on) {
       setPhoto(on);
       // the first frame that asks for the blur starts its passes building; until they are in, the frame is sharp
@@ -538,6 +724,8 @@ async function main() {
     const dt = Math.min(Math.max((now - last) / 1000, 0), 1 / 20);
     last = now;
     if (measuring) return;
+    // an album page is drawn when it changes, and stands while it is read
+    if (mode.open) return;
     if (paused) {
       draw(0);
       return;

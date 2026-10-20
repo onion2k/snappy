@@ -8,6 +8,8 @@
  * whole pixels, and written again only when it has moved, so a view held still writes nothing to the page at all. The
  * card is made on a press of the shutter, which is not a frame.
  */
+import type { Keeping } from './album';
+import { keptLine } from './albumpages';
 import { BRACKETS, type Brackets } from './brackets';
 import { TERMS, critique, type Grade } from './score';
 import type { Viewfinder } from './viewfinder';
@@ -16,7 +18,7 @@ import type { Viewfinder } from './viewfinder';
 const CARD_MS = 3000;
 
 /** Each term's name on the card, in `TERMS`' order. */
-const TERM_NAMES: Record<(typeof TERMS)[number], string> = {
+export const TERM_NAMES: Record<(typeof TERMS)[number], string> = {
   inFrame: 'in frame',
   seen: 'seen',
   size: 'size',
@@ -28,7 +30,7 @@ const TERM_NAMES: Record<(typeof TERMS)[number], string> = {
 };
 
 /** A term at or under this is shown as what let the picture down. */
-const LOW = 0.5;
+export const LOW = 0.5;
 
 export class ViewfinderHud {
   private readonly root = document.getElementById('vf')!;
@@ -41,6 +43,7 @@ export class ViewfinderHud {
   private readonly cardStars = document.getElementById('cardStars')!;
   private readonly cardName = document.getElementById('cardName')!;
   private readonly cardWords = document.getElementById('cardWords')!;
+  private readonly cardKept = document.getElementById('cardKept')!;
   private readonly print = (document.getElementById('cardPrint') as HTMLCanvasElement).getContext('2d')!;
   private readonly cardBars: HTMLElement[] = [];
   private readonly boxes: HTMLElement[] = [];
@@ -54,6 +57,11 @@ export class ViewfinderHud {
   private cardTimer = 0;
 
   constructor() {
+    // the pulse is once a lock: taken off when it is done, or cut short by the marks being hidden (the album hides them
+    // by its style, which the HUD is not told of), so showing them again does not play it over (album review, 5)
+    const unpulse = () => this.mark.classList.remove('pulse');
+    this.mark.addEventListener('animationend', unpulse);
+    this.mark.addEventListener('animationcancel', unpulse);
     const holder = document.getElementById('brackets')!;
     for (let k = 0; k < BRACKETS.most; k++) {
       const el = document.createElement('div');
@@ -82,6 +90,7 @@ export class ViewfinderHud {
     this.root.hidden = !on;
     this.iris();
     if (!on) {
+      this.mark.classList.remove('pulse');
       this.written.fill(-1);
       this.markWritten.fill(-1);
       this.locked[0] = -1;
@@ -149,7 +158,9 @@ export class ViewfinderHud {
       my = Math.round(((1 - vf.mark[1]) / 2) * height);
     let onSharp = 0;
     for (let k = 0; k < brackets.count; k++) if (brackets.which[k] === vf.focused && brackets.sharp[k]) onSharp = 1;
-    if (m[0] !== mx || m[1] !== my) this.mark.style.transform = `translate(${mx}px, ${my}px)`;
+    // placed by its own translate and not a transform, which the pulse's scale is applied before: scaled so, the mark
+    // was scaled from the page's corner and swept in from 1.7 times as far off (album review, 5)
+    if (m[0] !== mx || m[1] !== my) this.mark.style.translate = `${mx}px ${my}px`;
     if (m[2] !== onSharp) this.mark.classList.toggle('sharp', onSharp === 1);
     const manual = vf.mode === 'manual' ? 1 : 0;
     // a lock: auto focus finding an oddity, or a tap setting the focus; the mark pulses once, as a camera's beeps
@@ -185,9 +196,10 @@ export class ViewfinderHud {
 
   /**
    * The card for a picture: a print of the frame as taken, copied from `frame` (one copy a press), its total and stars,
-   * what it is of, a line on what let it down, and each term; for three seconds, replacing the last.
+   * what it is of, whether the album kept it (`kept`, read now, as the next picture writes it again), a line on what let
+   * it down, and each term; for three seconds, replacing the last.
    */
-  card(g: Grade, name: string | null, frame: HTMLCanvasElement): void {
+  card(g: Grade, name: string | null, frame: HTMLCanvasElement, kept: Keeping): void {
     const p = this.print,
       w = p.canvas.width,
       h = p.canvas.height;
@@ -198,6 +210,9 @@ export class ViewfinderHud {
     this.cardStars.textContent = '★'.repeat(g.stars) + '☆'.repeat(3 - g.stars);
     this.cardName.textContent = name ?? 'Nothing in frame';
     this.cardWords.textContent = critique(g);
+    const line = keptLine(kept.kind, kept.replaced);
+    this.cardKept.textContent = line ?? '';
+    this.cardKept.hidden = line === null;
     TERMS.forEach((_, k) => {
       const v = g.terms[k];
       this.cardBars[k].style.transform = `scaleX(${v.toFixed(3)})`;
@@ -210,5 +225,11 @@ export class ViewfinderHud {
     el.hidden = false;
     clearTimeout(this.cardTimer);
     this.cardTimer = window.setTimeout(() => (el.hidden = true), CARD_MS);
+  }
+
+  /** The card put away at once, as the album opens over it. */
+  hideCard(): void {
+    clearTimeout(this.cardTimer);
+    this.cardEl.hidden = true;
   }
 }

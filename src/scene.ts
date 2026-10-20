@@ -304,6 +304,15 @@ export class Scene {
   readonly lens = new Float64Array([40, 1.6]);
   /** The rover's body, which the sight line runs to: written each frame. */
   private readonly aim = new Float64Array(3);
+  /**
+   * Whether the rover is left out of the frames drawn, and its contact shade, its rings in the water and its tracks with
+   * it: for an album page, which is the world as the picture saw it and not the rover, whose pose and tracks are not
+   * kept. The page sets it; the scene draws them at a count of nought while it is set, and the bushes stand and the grass
+   * is pressed by nothing.
+   */
+  hidePlayer = false;
+  /** Whether the rover and the rest are drawn at nought now, so putting them away or back is written once. */
+  private playerAway = false;
   /** This frame's ease toward cut and toward grown back, by what is wanted: nought cut, one whole. */
   private readonly eases = new Float64Array(2);
 
@@ -800,12 +809,18 @@ export class Scene {
       this.refill();
     }
     const { draws } = this;
+    const away = this.hidePlayer;
 
-    // the rover, from its logic
-    poseOf(game.rover, this.pose);
-    poseRover(this.roverMatrices, this.pose);
-    this.wade(game.rover, game.t, dt);
-    for (let i = 0; i < this.roverDrawn.length; i++) draws.move(this.base.rover + i, this.roverDrawn[i].matrices);
+    // the rover, from its logic; or none, its shade, its rings and its tracks drawn at a count of nought, and put back
+    // whole on the first frame it is drawn again
+    if (away) this.putAway();
+    else {
+      if (this.playerAway) this.putBack();
+      poseOf(game.rover, this.pose);
+      poseRover(this.roverMatrices, this.pose);
+      this.wade(game.rover, game.t, dt);
+      for (let i = 0; i < this.roverDrawn.length; i++) draws.move(this.base.rover + i, this.roverDrawn[i].matrices);
+    }
 
     // the clouds, by game time; the sun's box round where the camera looks, high enough to hold them, and its map
     // fitted to the ground the camera sees
@@ -822,17 +837,21 @@ export class Scene {
     // what stands in the camera's way cut out of it, and grown back once it has passed: the way to the rover itself,
     // at its body's middle, and not to the point the camera looks at, which leads it, so a crown over the rover and short
     // of the line to the lead was left standing over it (review 2)
+    // with no rover, to the eye itself, so all that is cut is a crown the eye is in
     const aim = this.aim;
-    aim[0] = game.rover.x;
-    aim[1] = game.rover.y;
-    aim[2] = game.rover.z + AIM_HEIGHT;
+    aim[0] = away ? eye[0] : game.rover.x;
+    aim[1] = away ? eye[1] : game.rover.y;
+    aim[2] = away ? eye[2] : game.rover.z + AIM_HEIGHT;
     this.sight.set(eye, aim, this.lens);
     const ease = 1 - Math.exp(-SHRINK_RATE * Math.max(0, dt));
     this.eases[0] = ease;
     this.eases[1] = 1 - Math.exp(-GROW_RATE * Math.max(0, dt));
-    this.cutAway(this.treesCut, this.trees, this.treesLow, dt);
-    this.cutAway(this.housesCut, this.built, this.builtLow, dt);
-    this.pressBushes(game.rover, dt, ease);
+    // an album page holds nothing over from the game: what is cut is what its own eye is in, and not what the chase
+    // camera had cut and the hold kept so, which was the page's picture one time and not after a reload
+    const hold = away ? 0 : HOLD;
+    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, hold);
+    this.cutAway(this.housesCut, this.built, this.builtLow, dt, hold);
+    this.pressBushes(game.rover, dt, ease, away);
     this.handOver(this.trees, this.base.trees, false);
     this.handOver(this.treesLow, this.base.treesLow, false);
     this.handOver(this.builtLow, this.base.builtLow, false);
@@ -841,21 +860,47 @@ export class Scene {
 
     this.turnSails(game.t);
     this.bob(game.subjects.lift);
+    if (away) return;
     this.lay(game.tracks, game.t);
     this.press(game.rover);
+  }
+
+  /** The rover, its contact shade, its rings and its tracks drawn at a count of nought: written once, not each frame. */
+  private putAway() {
+    if (this.playerAway) return;
+    this.playerAway = true;
+    const { draws } = this;
+    for (let i = 0; i < this.roverDrawn.length; i++) draws.move(this.base.rover + i, this.roverDrawn[i].matrices, 0);
+    draws.move(this.base.contact, this.contact.matrices, 0);
+    draws.move(this.base.contact + 1, this.rings.matrices, 0);
+    draws.move(this.base.tracks, this.marks.matrices, 0);
+  }
+
+  /** The rover and the rest drawn whole again, at the counts they were made with, and the tracks as far as written. */
+  private putBack() {
+    this.playerAway = false;
+    const { draws } = this;
+    for (let i = 0; i < this.roverDrawn.length; i++) {
+      const m = this.roverDrawn[i].matrices;
+      draws.move(this.base.rover + i, m, m.length / 16);
+    }
+    draws.move(this.base.contact, this.contact.matrices, 1);
+    draws.move(this.base.contact + 1, this.rings.matrices, WADE.rings);
+    draws.move(this.base.tracks, this.marks.matrices, this.marksWritten);
   }
 
   /**
    * Each of `tracked`, eased toward cut if the sight line says it is in the way and back if not, and swapped for its
    * low variant (a capped stump, a house's capped walls' feet) as it passes halfway, and back again the same: so a
    * thing that grazes the line does not flicker, and nothing is ever drawn squashed. A step of nought (a paused frame)
-   * settles it at once.
+   * settles it at once. `hold` is how far past the way what is cut stays cut: `HOLD`, or nought for a still that must not
+   * depend on what came before it.
    */
-  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number) {
+  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number, hold: number) {
     for (let t = 0; t < tracked.count; t++) {
       const p = this.map.placements[tracked.of[t]];
       // what is cut down stays cut until it is clearly out of the way, and what stands is cut once it is in it
-      const want = this.sight.blocks(p, tracked.down[t] ? HOLD : 0) ? 0 : 1;
+      const want = this.sight.blocks(p, tracked.down[t] ? hold : 0) ? 0 : 1;
       const was = tracked.size[t];
       if (was === want) continue;
       // cut at once, grown back slowly (GROW_RATE), the frame's two eases read from an array so neither is boxed
@@ -878,14 +923,15 @@ export class Scene {
    * A bush, a fern, a clump of flowers or of reeds the rover is in pressed down under it, and stood up again once it
    * has gone, so nothing pokes through its body (review 1, 19; review 3, 12).
    */
-  private pressBushes(r: Rover, dt: number, ease: number) {
+  private pressBushes(r: Rover, dt: number, ease: number, away: boolean) {
     const b = this.bushes;
     for (let t = 0; t < b.count; t++) {
       const p = this.map.placements[b.of[t]];
       const dx = p.x - r.x,
         dy = p.y - r.y;
       const reach = SIZE[p.kind as keyof typeof SIZE] * p.scale * 0.45 + 3;
-      const want = dx * dx + dy * dy < reach * reach ? 0 : 1;
+      // with the rover put away, nothing is pressed
+      const want = !away && dx * dx + dy * dy < reach * reach ? 0 : 1;
       const was = b.size[t];
       if (was === want) continue;
       let now = dt > 0 ? was + (want - was) * ease : want;

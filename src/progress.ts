@@ -1,14 +1,21 @@
 /**
- * What the player has set, and where it is kept: the sound, in the
- * browser's storage or, for the game run without a page, anywhere. Old
- * saves must still load: a field a save does not have takes its default,
- * and a field it has that the game no longer knows is left alone.
+ * What the player has set and done, and where it is kept: the sound and the
+ * album, in the browser's storage or, for the game run without a page,
+ * anywhere. Old saves must still load: a field a save does not have takes
+ * its default, and a field it has that the game no longer knows is left
+ * alone.
  */
 export interface Save {
   /** Whether the player has turned the sound off. */
   muted: boolean;
   /** The master volume, from 0 to 1. */
   volume: number;
+  /**
+   * The album's pictures as the save holds them (`AlbumEntry`, in `album.ts`). Kept here as the list it was and not
+   * read: whether an entry is right depends on the world's oddities, which the save does not know, so the game reads
+   * it through `Album.load` and writes back what it kept.
+   */
+  album: unknown[];
 }
 
 /** Where the save is kept. */
@@ -63,7 +70,7 @@ export function memoryStore(json: string | null = null): SaveStore & { json: str
   };
 }
 
-const fresh = (): Save => ({ muted: false, volume: 1 });
+const fresh = (): Save => ({ muted: false, volume: 1, album: [] });
 
 /** A number from a save, or the default where it is missing or not a number. */
 function number(from: Record<string, unknown>, key: string, or: number): number {
@@ -102,6 +109,7 @@ export class Progress {
     const d = fresh();
     this.save.muted = boolean(from, 'muted', d.muted);
     this.save.volume = unit(from, 'volume', d.volume);
+    this.save.album = Array.isArray(from.album) ? (from.album as unknown[]) : d.album;
   }
 
   /** The sound turned off or on, and the save written at once, since nothing else will write it. */

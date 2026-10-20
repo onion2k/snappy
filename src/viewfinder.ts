@@ -55,6 +55,20 @@ export function fovOf(focal: number): number {
 }
 
 /**
+ * A shot's focus as a depth along the view, which is what the depth-of-field pass reads: the focus is a distance along
+ * the ray through the focus mark (`mark`, across and up from the middle, minus one to one), so off the middle it is that
+ * much nearer the lens's plane. One sum for the viewfinder and for the album's pages, so a page is blurred as the
+ * picture was.
+ */
+export function focusDepthOf(shot: Shot, mark: ArrayLike<number>): number {
+  const v = shot.v,
+    th = LENS.sensor / 2 / v[2];
+  const a = mark[0] * th * v[3],
+    b = mark[1] * th;
+  return v[4] / Math.sqrt(1 + a * a + b * b);
+}
+
+/**
  * A number held between two. Only for what the page asks now and then, a drag or the wheel: what runs every frame holds
  * its numbers with `Math.min` and `Math.max`, which V8 always inlines, since a fraction handed to this where it was not
  * inlined was boxed, going in and coming back.
@@ -116,6 +130,19 @@ export class Shot {
   get fov(): number {
     return fovOf(this.v[2]);
   }
+}
+
+/**
+ * Where a camera at `shot`'s eye is aimed to look along its look, `ahead` units out, into `out`: the renderer's camera
+ * is a position and a target, and the viewfinder and an album page both aim it so. Any distance does.
+ */
+export function aimOf(shot: Shot, ahead: number, out: Float64Array): void {
+  const v = shot.v,
+    e = shot.eye,
+    cp = Math.cos(v[1]);
+  out[0] = e[0] + Math.cos(v[0]) * cp * ahead;
+  out[1] = e[1] + Math.sin(v[0]) * cp * ahead;
+  out[2] = e[2] + Math.sin(v[1]) * ahead;
 }
 
 /**
@@ -249,11 +276,7 @@ export class Viewfinder {
    * the ray through the mark, so off the middle it is that much nearer the lens's plane. For the page, now and then.
    */
   get focusDepth(): number {
-    const v = this.shot.v,
-      th = LENS.sensor / 2 / v[2];
-    const a = this.mark[0] * th * v[3],
-      b = this.mark[1] * th;
-    return v[4] / Math.sqrt(1 + a * a + b * b);
+    return focusDepthOf(this.shot, this.mark);
   }
   get turnRate(): number {
     return this.shot.v[6];

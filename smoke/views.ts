@@ -34,6 +34,8 @@ export interface GameView {
    * its middle put at (`nx`, `ny`) on the screen (y up), focus on auto.
    */
   photo?: { of: string; mm: number; nx?: number; ny?: number };
+  /** The picture taken once the viewfinder is aimed, and the album opened over the game at its first page. */
+  album?: boolean;
 }
 
 /** Frames enough for the camera to settle and the rover, idle two seconds, to turn and look up at it. */
@@ -98,6 +100,12 @@ export const GAME_VIEWS: Record<string, GameView> = {
   'game-photo-duck': facing('mill pond duck', 34, 0, {
     settle: 60,
     photo: { of: 'mill pond duck', mm: 70, nx: -1 / 3, ny: -1 / 4 },
+  }),
+  // the album opened on the duck's picture just taken: the page's redraw, in its mount, with no rover and no tracks
+  'game-album': facing('mill pond duck', 34, 0, {
+    settle: 60,
+    photo: { of: 'mill pond duck', mm: 70, nx: -1 / 3, ny: -1 / 4 },
+    album: true,
   }),
   'game-photo-gnome': facing('orchard gnome', 24, 0, {
     settle: 60,
@@ -189,5 +197,9 @@ export async function placeView(page: Page, view: GameView): Promise<string> {
     [view, SETTLE, bank] as const,
   );
   if (view.photo) await aimAt(page, view.photo.of, view.photo.mm, view.photo.nx, view.photo.ny);
+  if (view.album) {
+    await page.evaluate(() => window.game!.shutter());
+    await page.evaluate(() => window.game!.openAlbum(true));
+  }
   return at;
 }

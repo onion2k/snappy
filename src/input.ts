@@ -114,6 +114,8 @@ export class Input {
   readonly stick = new Stick();
   /** The keys held, one bit each. */
   private down = 0;
+  /** Whether the keys and the stick are shut out of driving, as while the album is open over the game. */
+  private closed = false;
   // read into this each frame, so reading makes nothing
   private readonly drive: Drive = { throttle: 0, steer: 0 };
   private readonly target: EventTarget;
@@ -126,11 +128,24 @@ export class Input {
     target.addEventListener('blur', this.onBlur);
   }
 
+  /**
+   * Whether the keys and the stick are shut out of driving: the album open over the game, whose arrows turn its pages
+   * and must not steer as well. Shut or opened, everything held is let go, so a key held as the album opened, or pressed
+   * while it was open and held as it closed, drives nothing until it is pressed again, as with a blur.
+   */
+  get shut(): boolean {
+    return this.closed;
+  }
+  set shut(on: boolean) {
+    this.closed = on;
+    this.release();
+  }
+
   private readonly onDown = (e: Event) => {
     const k = e as KeyboardEvent;
     if (QUIET.has(k.code)) e.preventDefault();
     // a repeat is never a press: a key held through a blur stays let go until it is pressed again
-    if (k.repeat || k.metaKey || k.ctrlKey || k.altKey) return;
+    if (this.closed || k.repeat || k.metaKey || k.ctrlKey || k.altKey) return;
     this.down |= KEYS[k.code] ?? 0;
   };
 

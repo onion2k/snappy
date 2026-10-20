@@ -26,7 +26,7 @@
  */
 import { SEEN_POINTS, seenPoints, type Subjects } from './sight';
 import { SUN } from './sun';
-import { LENS, ViewFrame, type Shot } from './viewfinder';
+import { LENS, ViewFrame, focusDepthOf, type Shot } from './viewfinder';
 import { SUBJECTS, type Ground, type SubjectKind } from './world/types';
 
 export const TERMS = ['inFrame', 'seen', 'size', 'placement', 'facing', 'focus', 'steady', 'light'] as const;
@@ -143,6 +143,18 @@ export function depthOfField(focal: number, aperture: number, focus: number, rea
   const share = GRADE.focus.sharp / k;
   out[0] = (2 * focus * share) / (1 + share);
   out[1] = k / 2 / LENS.sensor / reach;
+}
+
+/**
+ * The blur a shot is drawn with, as the viewfinder draws it: the depth-of-field band and strength (`depthOfField`)
+ * through the shot's own lens and aperture, at the depth of its focus along the view through the focus mark `mark`
+ * (`focusDepthOf`), written into `out` as band, strength and that depth. One sum for the viewfinder's frames and the
+ * album's pages, so a page kept is blurred as its picture was taken. Makes nothing.
+ */
+export function shotBlur(shot: Shot, mark: ArrayLike<number>, reach: number, out: Float64Array): void {
+  const depth = focusDepthOf(shot, mark);
+  depthOfField(shot.v[2], shot.v[5], depth, reach, out);
+  out[2] = depth;
 }
 
 /**
