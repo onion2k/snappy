@@ -6,10 +6,12 @@ things. TypeScript, Vite, and WebGPU through
 physics from [artshape-physics](https://github.com/onion2k/artshape-physics)
 and the sound from [artshape-sound](https://github.com/onion2k/artshape-sound).
 The README says what the game is; this file says how it is made. The house
-rules in `~/.claude/CLAUDE.md` apply too. There is no game in `src/` yet: a
-walled floor in golf's toon daylight, with three sample shapes on it and a
-camera to orbit them, the ground the first feature builds on. The template's
-demo (a sled shoving balls into a hole) was taken out on 2026-10-19.
+rules in `~/.claude/CLAUDE.md` apply too. What is in `src/` now is the world
+and the player: a landscape about 190 m across in golf's toon daylight (a
+river with fords, a lake, a village, ruins, five biomes), and a six-wheeled
+rover driven about it in third person (features 1 and 2 of `docs/plan.md`,
+specified in `docs/specs/landscape-rover.md`). Nothing is pictured yet: the
+camera, the shutter and the album are the next features.
 
 ## The factory
 
@@ -22,10 +24,10 @@ commit. The line does not skip a station, and it stops when a gate is red:
 a red gate is fixed before anything else lands, never skipped with
 `--no-verify` and never made green by moving its baseline.
 
-The three properties are bug free (`src/invariants.ts`, and the fuzzer once
-there is a player to play it; every bug found becomes a test, and a rule
-where it is one; the tests themselves held by `mutate`), loads fast and draws fast (`perf`, and a rung to step down
-to when a feature cannot fit the budget). The same seed gives the
+The three properties are bug free (`src/invariants.ts` and the fuzzer; every
+bug found becomes a test, and a rule where it is one; the tests themselves
+held by `mutate`), loads fast and draws fast (`perf`, and a rung to step
+down to when a feature cannot fit the budget: `FrameRung` in `src/view.ts`). The same seed gives the
 same game, so every failure can be played again.
 
 ## Gates
@@ -33,28 +35,23 @@ same game, so every failure can be played again.
 What each holds, and where its figure and its tolerance are kept. A figure
 is not copied here; read it from its file.
 
-| Gate     | Holds                                              | Figure kept in                   | Tolerance, in                                            |
-| -------- | -------------------------------------------------- | -------------------------------- | -------------------------------------------------------- |
-| `perf`   | boot, the least of 24 frames, the gzipped download | `smoke/perf-baseline.json`       | `smoke/judging.ts`                                       |
-| `perf`   | the same, against the budget                       | `BUDGET` in `smoke/perf.spec.ts` | none: a budget is a limit                                |
-| `look`   | the scenes, to the pixel                           | `smoke/screens/`                 | `TOLERANCE`, `smoke/look.spec.ts`                        |
-| `mutate` | surviving mutants, per logic file, held exactly    | `mutation-baseline.json`         | none; the score floor is `break` in `stryker.config.mjs` |
+| Gate          | Holds                                                                          | Figure kept in                   | Tolerance, in                                            |
+| ------------- | ------------------------------------------------------------------------------ | -------------------------------- | -------------------------------------------------------- |
+| `perf`        | boot, the least of 24 frames, the gzipped download, a driven run's worst frame | `smoke/perf-baseline.json`       | `smoke/judging.ts`                                       |
+| `perf`        | the same, against the budget                                                   | `BUDGET` in `smoke/perf.spec.ts` | none: a budget is a limit                                |
+| `pace:check`  | the autopilot's seconds to cross the world west to east                        | `scripts/pace-baseline.json`     | `TOLERANCE`, `scripts/pace.ts`; and the spec's 60-150 s  |
+| `look`        | the scenes, to the pixel                                                       | `smoke/screens/`                 | `TOLERANCE`, `smoke/look.spec.ts`                        |
+| `mutate`      | surviving mutants, per logic file, held exactly                                | `mutation-baseline.json`         | none; the score floor is `break` in `stryker.config.mjs` |
+| `fuzz`        | `src/invariants.ts` and the camera's rules, over seeds 1-12 by default         | none                             | none                                                     |
+| `determinism` | the same seed driven twice by the autopilot, hashed, seeds 1-6                 | none                             | none                                                     |
 
-Five of the template's gates were deleted with its demo on 2026-10-19,
-since each held only the demo's play, and a gate that holds nothing looks
-as if it does. Each comes back from `~/projects/artshape-game-template`,
-cut to the game's own terms, with the feature that gives it something to
-hold:
-
-- **`fuzz`** (`scripts/fuzzer.ts`, `fuzz.ts`) and **`determinism`**
-  (`determinism.ts`, `determinism-check.ts`): with the player, the first
-  thing a person can do, and so the first thing a monkey can.
-- **`bench`** (`bench.ts`, `benching.ts`): with the first bodies in the
-  physics world.
-- **`leaks`** (`leaks.ts`, `leak-check.ts`): with the first thing kept,
-  most likely the album of pictures taken.
-- **`pace`** (`pace.ts`, `pace-check.ts`): with the first goal, the
-  minutes it takes an autopilot to reach it.
+The world is held by its own unit tests in `test/world*.test.ts`: its hash
+pinned, every tile the rover fits on reached from the start, the banks each
+with a way round, the fords on roads. Two of the template's gates are not
+back yet, since there is nothing for them to hold: **`bench`** comes with
+the first bodies in the physics world, and **`leaks`** with the first thing
+kept, most likely the album of pictures taken. The tracks are a fixed pool,
+held by an invariant.
 
 A budget is what the game may cost at all; a baseline is what it cost at
 the last commit, held both ways, so a step toward a budget is noticed as
@@ -71,43 +68,63 @@ The survivors do not wobble either: the count for each file is held
 exactly, both ways, and a change that moves it writes the baseline again
 and says why. A new file of logic is added to `stryker.config.mjs`; the
 page, the picture, the browser's events and the test API are left out, as
-none of them is unit-tested.
+none of them is unit-tested, and so are the world's generator and the
+models' meshes (see What is not held).
 
 ## Commands
 
     npm run dev            the game at http://localhost:5206
     npm run check:quick    formatting, types, lint, unit tests (the pre-commit hook; ~10 s)
-    npm run check          all of it: check:quick, mutate, smoke with perf and look
+    npm run check          all of it (~3 min): check:quick, fuzz, determinism, pace:check, mutate,
+                           smoke with perf and look
     npm test               unit tests (Vitest, test/)
-    npm run perf | look | smoke | mutate
+    npm run fuzz           the game played at random; -- --seed N plays one failure again
+    npm run determinism | pace | perf | look | smoke | mutate
                            each gate on its own, as in Gates; mutate:judge -- src/a.ts
                            judges one file
+    npm run map            the world from above, to reports/map.png
+    npm run shots          every view, game and model, to reports/shots/, with frame costs
 
 A unit test is allowed thirty seconds, and `vitest.config.ts` says why.
 
-`npm run perf:update`, `mutate:update` and `look:update` write a baseline
+`npm run perf:update`, `pace:check -- --update`, `mutate:update` and `look:update` write a baseline
 again. Only through `/gate-moved`, only for a change meant to move it, and
 the commit says why. Look at every picture. A baseline written while the
 machine is at other work fails every run after it.
 
 ## How the code is laid out
 
-- `src/game.ts` is the game without the picture: everything that happens in
-  the arena, a step at a time. It tells what happened through `GameEvents`,
-  and knows nothing of the renderer or the page.
-- `src/main.ts` is the page. It turns those events into words on the screen
-  and draws the frame. There is no game logic here.
+- `src/game.ts` is the game without the picture: the world, the rover and
+  its tracks, the clock, a step at a time, driven by a `Drive`. It knows
+  nothing of the renderer or the page. Nothing happens in it yet that it
+  tells of; the first thing that does (a picture taken) adds `GameEvents`.
+- `src/world/` is the world, made once from content and the same every
+  game: `types.ts` is the contract every other module reads it by
+  (`WorldMap`, `Ground`, `DRIVE`, the kinds), `drive.ts` the one rule of
+  where the rover can go, `ground.ts` the ground read off a map,
+  `generate.ts` the world itself from the hand-laid `layout.ts`, and
+  `graph.ts` the drive graph, reachability and routes. `fixture.ts` is a
+  small world made by hand for the tests.
+- `src/rover.ts` is the rover (skid steer, rocker-bogie, its head),
+  `src/tracks.ts` its tracks, `src/camera.ts` the chase camera,
+  `src/autopilot.ts` a driver along a route for the gates, `src/input.ts`
+  and `src/touch.ts` the keys and the thumb stick: all logic, handed a
+  `Ground`, and none of it drawn.
+- `src/main.ts` is the page: input, the camera, the frame. There is no game
+  logic here. `src/scene.ts` is what is drawn, a chunk at a time round the
+  camera, from the models in `src/models/`; `src/view.ts` is its testable
+  logic (which chunks at what detail, what is cut out of the sight line,
+  the rung). `preview.html` and `src/preview.ts` are a page for working on
+  the models, never part of the game.
 - `src/debug.ts` is `window.game`, the test API. `src/invariants.ts` lists
   the rules that must always hold.
-- Content (the floor and the rock) lives in `arena.ts`. The save lives in
-  `progress.ts`. Chance comes from `random.ts`, handed in.
+- The save lives in `progress.ts`. Chance comes from `random.ts`, handed in.
 - `src/look.ts` is the whole look, golf's toon daylight, set on the renderer
-  by `daylight()`; `src/sun.ts` is where the sun is. `src/scene.ts` is what
-  is drawn: the floor, the rock and the three sample shapes.
+  by `daylight()`; `src/sun.ts` is where the sun is.
 - `src/physics.ts` is the game's side of artshape-physics, and nothing else
-  imports the package directly. Its world holds the floor and the rock, and
-  no bodies yet. A change a package needs goes in that repo,
-  with a version bump here.
+  imports the package directly. Its world holds the map's ground, and no
+  bodies yet. A change a package needs goes in that repo, with a version
+  bump here.
 - `src/sound.ts` is the game's side of artshape-sound, and the only file
   that imports it, behind `GameSound`. The page holds a `LazySound`: the
   sound is made on the first key or click (or the API's `wake()`), and until
@@ -124,28 +141,30 @@ In `.claude/skills`, and they come with every game copied from here:
 What to copy the shape of, when building something new:
 
 - **The look:** `src/look.ts`, golf's (ooergolf's `src/look.ts`, taken
-  2026-10-19, at artshape-render 0.45.0), its values unchanged and its turf
-  and water left out. A colour is tuned against it: golf's grass on the
-  floor, a darker warm stone on the rock, golf's toys on the samples, all in
-  `scene.ts`.
-- **In the arena:** nothing yet. The three sample shapes in `scene.ts` are
-  drawn only, to show the look, and go when the first thing to be pictured
-  comes. A new thing is its content in `arena.ts`, drawn by `scene.ts`,
-  stepped by `game.ts`, held by `invariants.ts`, read by `debug.ts`, and
-  pictured in `smoke/look.spec.ts`.
-- **Tools:** the mutation gate (`scripts/mutation-check.ts`, its judgement
-  in `scripts/mutation-judge.ts`), with unit tests of its own working
-  parts, and the perf gate (`smoke/perf.spec.ts`, judged in
+  2026-10-19, at artshape-render 0.45.0). Colours are tuned against it in
+  `src/models/palette.ts`.
+- **A thing in the world:** a kind in `KINDS` (`world/types.ts`), placed by
+  the world (`world/scatter.ts`, `built.ts`, `finds.ts`), solid by its
+  footprint (`BUILT`) or an obstacle circle, modelled in `src/models/kit.ts`
+  with a triangle ceiling in a test, drawn through the scene's chunk pools,
+  cut from the sight line by `view.ts`, and pictured in `smoke/views.ts`.
+- **The player:** the rover, in `rover.ts`, tested on the fixture world,
+  held by `misplaced()` in the invariants, driven by the fuzzer, posed by
+  `models/rover.ts`, and read by `debug.ts`'s `rover()`.
+- **Tools:** the fuzzer (`scripts/fuzzer.ts`), the pace gate
+  (`scripts/pace.ts`), the determinism check (`scripts/determinism.ts`) and
+  the mutation gate (`scripts/mutation-check.ts`), each with unit tests of
+  its own working parts, and the perf gate (`smoke/perf.spec.ts`, judged in
   `smoke/judging.ts`). A gate is trusted once it has been seen to fail
   what it is for.
 
-## Where the first features start
+## What the renderer cannot do yet
 
-The floor and the rock are the physics package's terms, and stay until the
-environment to explore replaces them. The samples go with the first thing
-to be pictured. The first feature with a player brings back `fuzz` and
-`determinism` in the same change, and each later gate comes with the
-feature that gives it something to hold, as in Gates.
+artshape-render 0.45 has no fade or alpha per placement, no outline or rim
+light per group, and no shadow softness per group. So a tree cut from the
+camera's sight line is swapped for a low variant rather than faded, and its
+crown's shadow goes with it. A change for any of these goes in that repo,
+with a version bump here.
 
 ## Rules for the code
 
@@ -158,8 +177,11 @@ feature that gives it something to hold, as in Gates.
   the renderer's groups are fixed and `move` writes them. A per-frame
   allocation is a frame-time bug and a garbage-collection stutter.
 - **Nothing is kept for ever.** A list, map or cache that is added to has to
-  be emptied somewhere, and its ceiling named in `scripts/leaks.ts`, which
-  the first thing kept brings back.
+  be emptied somewhere, and its ceiling named: a fixed pool (the tracks, the
+  scene's chunk pools) or, from the first thing kept, `scripts/leaks.ts`.
+- **One rule for where the rover goes.** `world/drive.ts` decides for the
+  rover, the drive graph and the tests alike; a world is only proven
+  reachable by the rule the rover moves by.
 - **Loading is the first frame's business.** Everything the first frame
   needs is built before `ready`; everything else after it. A dependency is
   weighed against the download budget before it is added.
@@ -177,19 +199,18 @@ feature that gives it something to hold, as in Gates.
 
 The house's nine points, in `~/.claude/CLAUDE.md`. Here, they mean: unit
 tests in `test/`, a stage in `smoke/progress.spec.ts`, a rule in
-`src/invariants.ts` and, once the fuzzer is back, an action in
-`scripts/fuzzer.ts`; a size in `scripts/leaks.ts` for anything kept (the
-first thing kept brings the leaks gate back); the perf figures before and after in
-the report and within budget, `measureFrame` in any other scene touched, and
-a picture in `smoke/look.spec.ts`. New tests mutation-checked by hand, and
+`src/invariants.ts` and an action in `scripts/fuzzer.ts`; a fixed pool or a
+size in `scripts/leaks.ts` for anything kept (the first thing kept brings
+the leaks gate back); the perf figures before and after in the report and
+within budget, `measureFrame` in any other scene touched, and a picture in
+`smoke/look.spec.ts` (its views in `smoke/views.ts`). New tests mutation-checked by hand, and
 the gate run over the files the change touched: `npx stryker run --force
 --mutate src/a.ts,src/b.ts`, then `npm run mutate:judge -- src/a.ts
-src/b.ts`. `npm run check` green, and once it is back, `npm run fuzz --
---seeds 1-24` clean.
+src/b.ts`. `npm run check` green, and `npm run fuzz -- --seeds 1-24` clean.
 
 ## Edge-case checklist
 
-For anything new in the arena, check what it does:
+For anything new in the world, check what it does:
 
 - **save:** saved, reloaded, and loaded from an old save without the field
 - **sound:** before the first gesture (no context made; nothing queued, no error; a mute made then is kept, and goes into
@@ -197,9 +218,16 @@ For anything new in the arena, check what it does:
   paused (no music: the sound steps with the game and not with the page), muted (`m` or `mute()`, kept in the save; the voices
   still count), and a save without the fields, or with `muted` as a string
   or a volume out of range (the defaults)
-- **rock:** against the wall and in the corners; never left in rock
-- **scale:** many at once, at capacity (`BODY_CAPACITY`); and what it costs
-  a frame at that many, in the toon look
+- **the rover:** driven into it, along it, round it, turning on the spot
+  beside it; it is a wall, an obstacle, or passable, and never stood in
+- **rock and banks:** against the wall and in the corners; a slope too steep
+  both ways; never left in rock
+- **water:** in the shallows (slowed, no tracks) and at the deep's edge (a
+  wall); half a body in deep water
+- **the sight line:** between the camera and the rover (cut away, and back
+  when it is past), and the camera never inside it
+- **scale:** many at once, at a chunk pool's capacity; and what it costs a
+  frame at that many, in the toon look, and at a chunk crossing
 - **phone:** narrow screen, and a slower GPU: which rung it steps down to
 - **the camera:** in frame and out of it, half in, behind something,
   too far off to count, and pictured twice (counted once)
@@ -214,11 +242,13 @@ For anything new in the arena, check what it does:
 
 `window.game`, in `src/debug.ts`, and its types are shared with the smoke
 tests, so a call that is not there does not compile. A test sets a scene
-with `pause`, `resume` and `seed`, plays it with `step(frames)`, and reads it
-back with `state` (`t`, `frame`, `paused`), `events`, `invariants`,
-`content` (the floor) and `save`. `mute`, `wake` (the first gesture) and
-`sound` work the sound. `look` aims the camera, and `measureFrame` and
-`bootMs` are the perf gate's. Unit tests get a game without a page from
+with `pause`, `resume`, `seed`, `teleport`, `drive` and `release`, plays it
+with `step(frames)`, and reads it back with `state` (`t`, `frame`,
+`paused`), `rover`, `camera`, `ground(x, y)`, `events`, `invariants` (the
+camera's rules among them), `content` (the bounds, the start, the
+landmarks) and `save`. `zoom` works the chase camera and `look` aims it by
+hand. `mute`, `wake` (the first gesture) and `sound` work the sound, and
+`measureFrame` and `bootMs` are the perf gate's. Unit tests get a game without a page from
 `newGame(seed)` in `test/helpers.ts`, and `memoryStore` in `src/progress.ts`
 stands in for a save. A new rule or kind of thing gains its reading here
 before a test reaches into the game's insides.
@@ -233,12 +263,18 @@ the API's, never a timeout. A test save goes in through `start(page, { save
 Said so that a green `npm run check` is not read as more than it holds.
 
 - **A phone, or any other GPU.** Every figure is this machine's, headless,
-  at 1280×800. The rungs a slower machine steps down to have no gate;
-  `look` has one viewport and no phone-width picture.
+  at 1280×800. The rungs a slower machine steps down to (`FrameRung`) have
+  unit tests and no picture or gate; `look` has one viewport and no
+  phone-width picture.
 - **Moving pictures.** `look` is still scenes; motion is seen by a person.
-- **Play.** With no player there is no fuzzer, no determinism check, no
-  leak watch, no bench and no pace gate: see Gates for what brings each
-  back.
+- **The world's generator and the mesh builders, by mutation.** `mutate`
+  leaves out `src/world/` (but for the drive rule and the ground) and
+  `src/models/` (but for the clouds' motion): a full run over them was on
+  course for two days (2026-10-20). They are held by their own tests, the
+  fuzzer, determinism and the pictures, not by their mutants.
+- **Play, in part.** The fuzzer, determinism and pace hold the rover and
+  the world; nothing holds a bench of the physics (no bodies) or a leak
+  watch (nothing kept), and nothing judges whether the world is fun.
 - **Structure and dependencies.** Nothing reads the imports for coupling,
   and nothing audits what is pinned or its licence; `package-lock.json` and
   a person do.

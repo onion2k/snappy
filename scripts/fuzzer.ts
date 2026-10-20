@@ -1,0 +1,201 @@
+/**
+ * The game played by a monkey: the real game, without the picture, driven
+ * at random and made to do at random everything a player can make happen —
+ * driving about, stopping, spinning on the spot, setting off for somewhere
+ * far, zooming the camera, saving and loading — and checked after every few
+ * frames for anything that must always hold and does not (`invariants.ts`,
+ * the camera's rules among them, since the monkey holds a camera as the page
+ * does), and for anything thrown.
+ *
+ * Only what a player could do. A monkey that did what no player can would
+ * find bugs no player will. The one exception is being put down somewhere:
+ * a player can drive anywhere they can stand, so the monkey may simply be
+ * there, and the world is too big to drive into every corner of otherwise.
+ * A new thing a player can do gets an action here.
+ *
+ * From a seed, so a failure can be played again exactly: `npm run fuzz --
+ * --seed N` does, and prints what was done before it went wrong.
+ */
+import { Autopilot } from '../src/autopilot';
+import { ChaseCamera } from '../src/camera';
+import { Game } from '../src/game';
+import { checkInvariants } from '../src/invariants';
+import { Progress, memoryStore } from '../src/progress';
+import { seeded } from '../src/random';
+import type { Drive } from '../src/rover';
+import { standable } from '../src/world/drive';
+import { route } from '../src/world/graph';
+
+const DT = 1 / 60;
+/** How many frames between checks, when nothing has just been done. */
+const CHECK_EVERY = 10;
+/** How many of the last things done a failure reports. */
+const LOG_TAIL = 25;
+
+export interface FuzzFailure {
+  seed: number;
+  frame: number;
+  problems: string[];
+  /** The last things done before it, oldest first. */
+  log: string[];
+}
+
+export interface FuzzResult {
+  seed: number;
+  frames: number;
+  failure: FuzzFailure | null;
+  /** How often each thing was done, and each event happened: to see that the monkey got about. */
+  done: Record<string, number>;
+  happened: Record<string, number>;
+}
+
+/** Play `frames` frames of the game at random from `seed`. */
+export function fuzz(seed: number, frames: number): FuzzResult {
+  // the monkey's own chance, apart from the game's, so what it decides does not shift what the game does
+  const random = seeded(seed * 7 + 1);
+  const happened: Record<string, number> = {};
+  const done: Record<string, number> = {};
+  const count = (into: Record<string, number>, key: string) => (into[key] = (into[key] ?? 0) + 1);
+  const log: string[] = [];
+  let frame = 0;
+  const fail = (problems: string[]): FuzzResult => ({
+    seed,
+    frames: frame,
+    failure: { seed, frame, problems, log: log.slice(-LOG_TAIL) },
+    done,
+    happened,
+  });
+
+  try {
+    let store = memoryStore();
+    let game = new Game(new Progress(store), { random: seeded(seed) });
+    const camera = new ChaseCamera();
+    camera.snap(game.rover, game.ground);
+    let drive: Drive = { throttle: 0, steer: 0 };
+    let pilot: Autopilot | null = null;
+    let busy = 0;
+    const between = (a: number, b: number) => a + random() * (b - a);
+    const did = (what: string) => {
+      count(done, what);
+      log.push(`frame ${frame}: ${what} (rover at ${game.rover.x.toFixed(1)}, ${game.rover.y.toFixed(1)})`);
+    };
+    const { bounds } = game.ground;
+    /** Everything a player can make happen, each as often as it is weighted. */
+    const actions: [number, () => void][] = [
+      [
+        8,
+        () => {
+          pilot = null;
+          drive = { throttle: random() < 0.8 ? 1 : -1, steer: random() < 0.4 ? 0 : between(-1, 1) };
+          busy = Math.floor(between(20, 240));
+          did('drive');
+        },
+      ],
+      [
+        2,
+        () => {
+          pilot = null;
+          drive = { throttle: 0, steer: random() < 0.5 ? 1 : -1 };
+          busy = Math.floor(between(10, 90));
+          did('spin');
+        },
+      ],
+      [
+        2,
+        () => {
+          pilot = null;
+          drive = { throttle: 0, steer: 0 };
+          busy = Math.floor(between(10, 60));
+          did('stop');
+        },
+      ],
+      [
+        2,
+        () => {
+          // a player can drive anywhere they can stand, so the monkey may simply be there: walls, banks and fords
+          // are found far sooner from close by
+          for (let tries = 0; tries < 50; tries++) {
+            const x = between(bounds.minX, bounds.maxX),
+              y = between(bounds.minY, bounds.maxY);
+            if (!standable(game.ground, x, y)) continue;
+            game.rover.teleport(x, y, between(0, Math.PI * 2));
+            camera.snap(game.rover, game.ground);
+            did('teleport');
+            return;
+          }
+        },
+      ],
+      [
+        1,
+        () => {
+          // set off for a landmark the long way, as a player crossing the world does
+          const { landmarks } = game.map;
+          const to = landmarks[Math.floor(random() * landmarks.length)];
+          const path = route(game.map, game.rover, to);
+          if (path.length < 4) return;
+          pilot = new Autopilot(path);
+          busy = Math.floor(between(600, 2400));
+          did(`set off for ${to.name}`);
+        },
+      ],
+      [
+        1,
+        () => {
+          camera.zoomBy(random() < 0.5 ? between(0.5, 0.9) : between(1.1, 2));
+          did('zoom');
+        },
+      ],
+      [
+        1,
+        () => {
+          // saved, and loaded again into a new game as a reload would: the save must come back as it was
+          const before = JSON.stringify(game.progress.save);
+          game.persist();
+          store = memoryStore(store.json);
+          game = new Game(new Progress(store), { random: seeded(seed + frame) });
+          camera.snap(game.rover, game.ground);
+          pilot = null;
+          const after = JSON.stringify(game.progress.save);
+          if (after !== before) throw new Error(`the save was ${before} and loaded as ${after}`);
+          did('reload');
+        },
+      ],
+    ];
+    const total = actions.reduce((n, [w]) => n + w, 0);
+    const act = () => {
+      let pick = random() * total;
+      for (const [w, go] of actions) {
+        if ((pick -= w) < 0) return go();
+      }
+    };
+
+    for (frame = 1; frame <= frames; frame++) {
+      if (busy > 0) busy--;
+      else act();
+      const p = pilot as Autopilot | null;
+      if (p) {
+        p.drive(game.rover, DT, drive);
+        if (p.done) {
+          count(happened, 'arrived');
+          pilot = null;
+          busy = 0;
+        }
+      }
+      const blocked = game.rover.blocked;
+      // the page tells the rover where the camera is each frame, so its head turns to it when it stands idle
+      game.rover.lookAt(camera.position[0], camera.position[1], camera.position[2]);
+      game.step(DT, drive);
+      if (game.rover.blocked && !blocked) count(happened, 'blocked');
+      if (game.rover.wet) count(happened, 'wet frames');
+      camera.update(game.rover, game.ground, DT);
+      if (frame % CHECK_EVERY === 0) {
+        const problems = checkInvariants(game, camera);
+        if (problems.length) return fail(problems);
+      }
+    }
+    happened['tracks held at the end'] = game.tracks.count;
+    return { seed, frames, failure: null, done, happened };
+  } catch (err) {
+    return fail([`threw: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`]);
+  }
+}

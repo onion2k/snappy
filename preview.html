@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Snappy models</title>
+<link rel="icon" href="data:," />
+<style>
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    background: #0b0a10;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #stats {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    font:
+      12px ui-monospace,
+      monospace;
+    color: #f1eee6;
+    background: rgba(14, 12, 20, 0.6);
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
+</style>
+<canvas id="view"></canvas>
+<div id="stats" hidden></div>
+<!-- the models' preview: a page for working on the look, never in the game's bundle (vite builds index.html alone) -->
+<script type="module" src="/src/preview.ts"></script>

@@ -5,7 +5,7 @@
  * looks the same as one that passes.
  */
 import { describe, expect, it } from 'vitest';
-import { TOLERANCE, moved } from '../smoke/judging';
+import { TOLERANCE, drivenMoved, moved } from '../smoke/judging';
 
 describe('the perf gate', () => {
   it('holds the download to the byte, either way', () => {
@@ -25,6 +25,16 @@ describe('the perf gate', () => {
     // a frame of half its baseline, or three times it: what the old slack of 0.6 ms let through
     expect(moved('frameMs', 0.171, 0.085)).toBe(true);
     expect(moved('frameMs', 0.171, 0.513)).toBe(true);
+  });
+
+  it('holds the driven run’s worst frame both ways, to a half and two milliseconds', () => {
+    expect(drivenMoved(7.5, 7.5)).toBe(false);
+    expect(drivenMoved(7.5, 11)).toBe(false);
+    expect(drivenMoved(7.5, 11.5)).toBe(true);
+    expect(drivenMoved(7.5, 3.6)).toBe(true);
+    // a small figure keeps its two milliseconds of slack
+    expect(drivenMoved(2, 3.9)).toBe(false);
+    expect(drivenMoved(2, 4.1)).toBe(true);
   });
 
   it('holds the boot both ways', () => {

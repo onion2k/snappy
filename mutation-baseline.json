@@ -1,10 +1,18 @@
 {
-  "src/arena.ts": 40,
+  "src/autopilot.ts": 67,
+  "src/camera.ts": 123,
   "src/frame-cost.ts": 14,
-  "src/game.ts": 3,
-  "src/invariants.ts": 9,
-  "src/physics.ts": 1,
+  "src/game.ts": 5,
+  "src/input.ts": 21,
+  "src/invariants.ts": 4,
+  "src/models/clouds.ts": 97,
+  "src/physics.ts": 2,
   "src/progress.ts": 22,
   "src/random.ts": 0,
-  "src/sound.ts": 0
+  "src/rover.ts": 206,
+  "src/sound.ts": 0,
+  "src/tracks.ts": 8,
+  "src/view.ts": 145,
+  "src/world/drive.ts": 10,
+  "src/world/ground.ts": 34
 }

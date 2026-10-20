@@ -29,7 +29,7 @@ export const OCCLUSION = { strength: 2, radius: 2.5, direct: 0.3 } as const;
  * lost over this many world units.
  */
 export const HAZE = {
-  halfWay: 3000,
+  halfWay: 6000,
   colour: [0.2, 0.42, 0.85] as [number, number, number],
   reach: 3000,
   height: 250,
@@ -51,10 +51,17 @@ export const SKY = {
  * tallest thing that casts: a top outside the box casts no shadow), the side of the square of ground its map covers
  * when it is fitted to the view and not the box (`reach`), how much of the square's edge its shadows fade out over
  * (`fade`), and how soft their edge is, in texels of its map (`softness`). Snappy fits the map to the whole arena, as
- * a small course does in golf, so only `softness` is read yet; the rest are kept as golf had them for when a larger
- * place needs them. Chosen so every thing casts and every surface catches, at one softness (golf, 8 October 2026).
+ * a small course does in golf, so only `softness` is read yet. Chosen so every thing casts and every surface catches,
+ * at one softness (golf, 8 October 2026).
+ *
+ * The landscape's clouds cast too, which is most of what a camera looking down sees of the sky, so its box reaches up
+ * over them: `top` is the highest cloud's top (`SKY_CLOUDS` in `models/clouds.ts`, 280 units and a third of the
+ * biggest's size), where golf's was over its tallest tree, 38. The box itself is not the whole world but the ground
+ * round the camera and the sky toward the sun from it (`sunBoxAround`), a few hundred units across and snapped as the
+ * camera moves: the renderer's depth bias is a share of the box's depth along the light, and a box round the whole
+ * 200 m world up to the clouds would make it three units, which loses the rover's own shadow.
  */
-export const SHADOW = { margin: 4, top: 38, reach: 420, fade: 0.15, softness: 1.5 } as const;
+export const SHADOW = { margin: 4, top: 330, reach: 420, fade: 0.15, softness: 1.5 } as const;
 
 /**
  * The clean toy: edges drawn at four samples a pixel, the toon bands eased

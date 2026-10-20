@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ORIGIN_X, ORIGIN_Y } from '../src/arena';
-import type { Game } from '../src/game';
+import { ChaseCamera } from '../src/camera';
+import { Game } from '../src/game';
+import { Progress, memoryStore } from '../src/progress';
+import { seeded } from '../src/random';
+import { FIXTURE, fixtureAt, fixtureWorld } from '../src/world/fixture';
 import { checkInvariants } from '../src/invariants';
+import { TRACKS } from '../src/tracks';
 import { newGame, settle } from './helpers';
-
-/**
- * A body put in the world, to break a rule about bodies with: the world holds none of its own. It is of a kind the
- * world has no radius for, which no rule reads.
- */
-function withBody(game: Game, x: number, y: number) {
-  return game.world.spawn(0, x, y, 1);
-}
 
 describe('what must always hold', () => {
   it('holds of a new game', () => {
@@ -19,15 +15,42 @@ describe('what must always hold', () => {
     expect(checkInvariants(game)).toEqual([]);
   });
 
-  it('reports a body in the rock, and a body that is not a number', () => {
-    const { game } = newGame();
-    const slot = withBody(game, 0, 0);
+  it('reports the camera under the ground, inside what is built, or looking through the ground', () => {
+    // on the fixture, whose cottage and rock say how tall they stand
+    const game = new Game(new Progress(memoryStore()), { random: seeded(1), map: fixtureWorld() });
+    const { rover, ground } = game;
+    const camera = new ChaseCamera();
+    camera.snap(rover, ground);
+    expect(checkInvariants(game, camera)).toEqual([]);
+    // the eye put under the ground beneath it
+    camera.position[2] = ground.heightAt(camera.position[0], camera.position[1]) - 1;
+    expect(checkInvariants(game, camera).join('\n')).toMatch(/the camera's eye is at .*, the ground under it/);
+    // and inside the cottage, a little under its ridge
+    const [cx, cy] = fixtureAt(FIXTURE.cottage[0], FIXTURE.cottage[1]);
+    camera.position[0] = cx;
+    camera.position[1] = cy;
+    camera.position[2] = ground.topAt(cx, cy) - 1;
+    expect(checkInvariants(game, camera).join('\n')).toMatch(/inside what stands there/);
+    camera.position[2] = Number.NaN;
+    expect(checkInvariants(game, camera).join('\n')).toMatch(/the camera is not a number/);
+    // without a camera to ask about, there is nothing to say of one
     expect(checkInvariants(game)).toEqual([]);
-    game.world.x[slot] = ORIGIN_X + 1;
-    game.world.y[slot] = ORIGIN_Y + 1;
-    expect(checkInvariants(game).join('\n')).toMatch(/in the rock/);
-    game.world.x[slot] = NaN;
-    expect(checkInvariants(game).join('\n')).toMatch(/not a number/);
+  });
+
+  it('reports the rover where it cannot stand, or not a number', () => {
+    const { game } = newGame();
+    const { rover, map } = game;
+    rover.x = map.grid.originX + 1;
+    rover.y = map.grid.originY + 1;
+    expect(checkInvariants(game).join('\n')).toMatch(/the rover is (not standable|over something solid)/);
+    rover.x = NaN;
+    expect(checkInvariants(game).join('\n')).toMatch(/the rover is not a number/);
+  });
+
+  it('reports the tracks grown past their pool', () => {
+    const { game } = newGame();
+    game.tracks.count = TRACKS.capacity + 1;
+    expect(checkInvariants(game).join('\n')).toMatch(/the tracks hold/);
   });
 
   it('reports time that is not finite, or ran backwards', () => {
@@ -55,14 +78,5 @@ describe('what must always hold', () => {
     expect(checkInvariants(game)).toEqual([]);
     (save as unknown as { muted: unknown }).muted = 'yes';
     expect(checkInvariants(game).join('\n')).toMatch(/the mute is yes/);
-  });
-
-  it('reports only the first few of one sort, and counts the rest', () => {
-    const { game } = newGame();
-    for (let i = 0; i < 5; i++) withBody(game, 0, 0);
-    for (let i = 0; i < 5; i++) game.world.x[i] = NaN;
-    const out = checkInvariants(game);
-    expect(out.filter((l) => l.startsWith('not a number'))).toHaveLength(4);
-    expect(out).toContain('not a number: and 2 more');
   });
 });

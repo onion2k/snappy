@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { COLS, FLOOR, ORIGIN_X, ORIGIN_Y, ROWS, TILE, onFloor } from '../src/arena';
 import { checkInvariants } from '../src/invariants';
 import { DT, newGame, settle } from './helpers';
 
@@ -12,21 +11,31 @@ describe('the game', () => {
     expect(game.t).toBeCloseTo(DT + 0.5, 12);
   });
 
-  it('has a world that holds the floor and the rock and no bodies, and nothing that must hold broken', () => {
+  it('has a physics world laid on the map, holding its ground and no bodies, and nothing that must hold broken', () => {
     const { game } = newGame();
     settle(game);
     expect(game.world.live).toBe(0);
-    expect(game.world.solid).toHaveLength(COLS * ROWS);
-    expect(game.world.grid, "the world is laid on the arena's own grid").toEqual({
-      cols: COLS,
-      rows: ROWS,
-      originX: ORIGIN_X,
-      originY: ORIGIN_Y,
-      tile: TILE,
-    });
-    expect(onFloor(game.world.solid, (FLOOR.minX + FLOOR.maxX) / 2, (FLOOR.minY + FLOOR.maxY) / 2)).toBe(true);
-    expect(onFloor(game.world.solid, FLOOR.minX - 1, 0), 'the rock round the floor').toBe(false);
+    expect(game.world.grid).toEqual(game.map.grid);
+    expect(game.world.solid).toBe(game.map.solid);
     expect(checkInvariants(game)).toEqual([]);
+  });
+
+  it('starts the rover where the map says, and drives it as asked', () => {
+    const { game } = newGame();
+    expect(game.rover.x).toBeCloseTo(game.map.start.x, 6);
+    expect(game.rover.y).toBeCloseTo(game.map.start.y, 6);
+    const x = game.rover.x,
+      y = game.rover.y;
+    for (let f = 0; f < 60; f++) game.step(DT, { throttle: 1, steer: 0 });
+    expect(Math.hypot(game.rover.x - x, game.rover.y - y)).toBeGreaterThan(10);
+    expect(checkInvariants(game)).toEqual([]);
+  });
+
+  it('stands still with nobody at the controls', () => {
+    const { game } = newGame();
+    const x = game.rover.x;
+    settle(game);
+    expect(game.rover.x).toBeCloseTo(x, 6);
   });
 
   it('writes the save when it is asked to, and not before', () => {

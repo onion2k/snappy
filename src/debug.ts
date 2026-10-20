@@ -12,10 +12,15 @@
  * The types are shared with the smoke tests, so a test that calls something
  * that is not here does not compile.
  */
-import { FLOOR } from './arena';
 import type { Game } from './game';
 import { checkInvariants } from './invariants';
 import { seeded } from './random';
+import { standable } from './world/drive';
+import { SURFACE } from './world/types';
+
+/** Each surface's name, by its number. */
+const SURFACE_NAMES: string[] = [];
+for (const [name, n] of Object.entries(SURFACE)) SURFACE_NAMES[n] = name;
 
 declare global {
   interface Window {
@@ -32,7 +37,40 @@ export interface GameState {
 
 /** Where things are, for setting a scene without importing the game's source. */
 export interface Content {
-  floor: { minX: number; minY: number; maxX: number; maxY: number };
+  /** The world's edge, in units. */
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  /** Where the rover starts, and which way it faces. */
+  start: { x: number; y: number; yaw: number };
+  /** The places worth finding, by name. */
+  landmarks: { name: string; kind: string; x: number; y: number }[];
+  waterLevel: number;
+}
+
+/** The rover as it stands. */
+export interface RoverState {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  speed: number;
+  pitch: number;
+  roll: number;
+  /** What the ground under it is made of, by name. */
+  surface: string;
+  /** How deep the water it stands in is, in units: nought when dry. */
+  wet: number;
+  /** Whether its last move was refused, all or in part. */
+  blocked: boolean;
+  /** How many track marks lie in the world. */
+  tracks: number;
+}
+
+/** The camera as it follows. */
+export interface CameraState {
+  target: [number, number, number];
+  position: [number, number, number];
+  /** How far back it is, in units. */
+  distance: number;
 }
 
 /** The sound as the game stands: for a test to read, since what is heard cannot be. */
@@ -63,6 +101,19 @@ export interface GameApi {
 
   state(): GameState;
   content(): Content;
+  rover(): RoverState;
+  camera(): CameraState;
+  /** The ground at a point: its height, what it is made of, the water over it, and whether the rover could stand there. */
+  ground(x: number, y: number): { height: number; surface: string; water: number; standable: boolean };
+
+  /** Drive as if the keys were held, `throttle` and `steer` each from -1 to 1, until `release`. */
+  drive(throttle: number, steer: number): void;
+  /** Let go of the controls `drive` took: the keys and the stick drive again. */
+  release(): void;
+  /** Put the rover at a point, facing `yaw`, or at the nearest place it can stand; the camera follows at once. */
+  teleport(x: number, y: number, yaw?: number): void;
+  /** The camera's distance multiplied by `factor`, as the wheel or a pinch does. */
+  zoom(factor: number): void;
   /** What has happened since this was last asked, a line each; the page tells of nothing yet. */
   events(): string[];
   /** The rules that must always hold, broken; empty when all is well. */
@@ -99,6 +150,12 @@ export interface DebugHost {
   draw(dt: number): void;
   frame(): number;
   look(x: number, y: number, view: { azimuth?: number; polar?: number; radius?: number }): void;
+  camera(): CameraState;
+  /** The test's controls, over the keys and the stick, or null to hand them back. */
+  override(drive: { throttle: number; steer: number } | null): void;
+  /** The camera put behind the rover at once, as after a teleport. */
+  snap(): void;
+  zoom(factor: number): void;
   measureFrame(warm?: number): Promise<number>;
   sound(): SoundState;
   mute(on: boolean): void;
@@ -134,11 +191,49 @@ export function createApi(host: DebugHost): GameApi {
         paused: host.paused(),
       };
     },
-    content: () => ({ floor: { ...FLOOR } }),
+    content: () => ({
+      bounds: { ...game.ground.bounds },
+      start: { ...game.map.start },
+      landmarks: game.map.landmarks.map((l) => ({ ...l })),
+      waterLevel: game.map.waterLevel,
+    }),
+    rover() {
+      const r = game.rover;
+      return {
+        x: r.x,
+        y: r.y,
+        z: r.z,
+        yaw: r.yaw,
+        speed: r.speed,
+        pitch: r.pitch,
+        roll: r.roll,
+        surface: SURFACE_NAMES[game.ground.surfaceAt(r.x, r.y)],
+        wet: game.ground.waterDepthAt(r.x, r.y),
+        blocked: r.blocked,
+        tracks: game.tracks.count,
+      };
+    },
+    camera: () => host.camera(),
+    ground(x, y) {
+      const g = game.ground;
+      return {
+        height: g.heightAt(x, y),
+        surface: SURFACE_NAMES[g.surfaceAt(x, y)],
+        water: g.waterDepthAt(x, y),
+        standable: standable(g, x, y),
+      };
+    },
+    drive: (throttle, steer) => host.override({ throttle, steer }),
+    release: () => host.override(null),
+    teleport(x, y, yaw = game.rover.yaw) {
+      game.rover.teleport(x, y, yaw);
+      host.snap();
+    },
+    zoom: (factor) => host.zoom(factor),
     events() {
       return host.events.splice(0);
     },
-    invariants: () => checkInvariants(game),
+    invariants: () => checkInvariants(game, host.camera()),
 
     save() {
       game.persist();

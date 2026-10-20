@@ -34,6 +34,19 @@ export const TOLERANCE: Record<keyof Figures, readonly [number, number]> = {
   bundleBytes: [0, 0],
 };
 
+/**
+ * How far the worst frame of the perf gate's driven run (`drivenWorstMs` in the baseline) may move, either way: a half,
+ * and two milliseconds. It is one frame out of 2,400, the one a chunk is crossed in, so it wobbles with whatever else the
+ * machine did in that frame: 6.4 to 8.6 ms over the runs it was set from, on an M4 Pro with other sessions at work.
+ */
+export const DRIVEN_TOLERANCE: readonly [number, number] = [0.5, 2];
+
+/** Whether the driven run's worst frame has moved from its baseline by more than its tolerance. */
+export function drivenMoved(was: number, now: number): boolean {
+  const [share, slack] = DRIVEN_TOLERANCE;
+  return Math.abs(now - was) > Math.max(Math.abs(was) * share, slack);
+}
+
 /** Whether a figure has moved from its baseline by more than its tolerance. */
 export function moved(key: keyof Figures, was: number, now: number): boolean {
   const [share, slack] = TOLERANCE[key];

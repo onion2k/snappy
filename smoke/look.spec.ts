@@ -16,19 +16,36 @@
  * A failure leaves the picture, what was drawn and the difference in
  * `test-results/`. Look at all three before deciding which is right.
  */
+import { existsSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { start, watch } from './game';
+import { GAME_VIEWS, placeView } from './views';
+
+/** The world's scenes, by the picture's name, each from one of the game's views. */
+const LOOK_SCENES: [string, keyof typeof GAME_VIEWS][] = [
+  ['meadow', 'game-meadow'],
+  ['pine', 'game-wood'],
+  ['autumn', 'game-autumn'],
+  ['heath', 'game-heath'],
+  ['wetland', 'game-wetland'],
+  ['village', 'game-village'],
+  ['ruin', 'game-ruin'],
+  ['ford', 'game-ford'],
+  ['rover', 'game-idle'],
+  ['far', 'game-farthest'],
+];
 
 /**
  * How far the pictures may differ before it is a change and not the GPU: not a pixel whose colour is off by more
- * than 0.02, Playwright's own measure of a colour's difference. Drawn on thirty pages just booted, ten of them with
- * every core at other work, the arena matched its picture to the pixel even at a threshold of 0, so there is no
- * drift here to allow for. Playwright leaves out a pixel it takes for the edge of a shape smoothed: four such
- * differed, byte for byte, between the picture and one written again two weeks and six renderer versions later. The five-hundredth of the pixels it used to forgive was 2,048 of them, and a button
- * over the arena is 701. A game that draws more (grass, particles, fog) measures its own drift the same way,
- * before it chooses: `/gate-moved` says how.
+ * than 0.02, Playwright's own measure of a colour's difference, past 24 of them. The stub's arena matched its picture
+ * to the pixel. The world does not quite: artshape-render's grass gathers its blades on the GPU in no fixed order, so
+ * where blades overlap at one depth a few pixels flip between frames. Drawn on five pages just booted, each scene moved
+ * at most 9 pixels, by up to 13 levels a channel, and the look builder saw 12 at most over many more (`/gate-moved`,
+ * 2026-10-20); the village, the rover and the far view, with little grass near, moved none. Twice the worst seen is
+ * allowed, and no more: a button over the picture is about 700 pixels. When the renderer draws its grass in a fixed
+ * order this goes back to nought.
  */
-const TOLERANCE = { maxDiffPixels: 0, threshold: 0.02 };
+const TOLERANCE = { maxDiffPixels: 24, threshold: 0.02 };
 
 /** The corner that counts the milliseconds a frame takes is different every run, and says nothing about the look. */
 async function hideStats(page: Page) {
@@ -36,22 +53,40 @@ async function hideStats(page: Page) {
 }
 
 test.describe('what it looks like', () => {
-  test('the arena, from the start', async ({ page }) => {
+  test('the world, from the start', async ({ page }) => {
     const problems = watch(page);
     await start(page, { seed: 11, paused: true });
     await page.evaluate(() => {
       const g = window.game!;
       g.step(180);
-      g.look(0, 0, { azimuth: 0.9, polar: 0.95, radius: 90 });
+      // the standard view: the chase camera settled behind the rover where it starts, on the east road into the village
       g.step(1);
     });
     await hideStats(page);
-    await expect(page.locator('#view')).toHaveScreenshot('arena.png', TOLERANCE);
+    await expect(page.locator('#view')).toHaveScreenshot('start.png', TOLERANCE);
     expect(problems).toEqual([]);
   });
 
-  test('a small thing added to the arena is a change', async ({ page }, info) => {
-    // while the pictures are being written this would write its own, button and all, over the arena's
+  // The world's scenes (the spec's tenth criterion): the five biomes, the village, a ruin, a ford, the rover close to
+  // with its idle face, and the world right out, each from its place in `views.ts` as the shots take it. A scene's
+  // picture is written only through `/gate-moved` (`npm run look:update`): until it is, the scene is skipped, so a
+  // plain run never writes a picture of its own unasked.
+  for (const [name, view] of LOOK_SCENES)
+    test(`the world: ${name}`, async ({ page }, info) => {
+      test.skip(
+        !existsSync(`smoke/screens/${name}.png`) && info.config.updateSnapshots !== 'all',
+        'no picture yet: written through /gate-moved',
+      );
+      const problems = watch(page);
+      await start(page, { seed: 1, paused: true });
+      await placeView(page, GAME_VIEWS[view]);
+      await hideStats(page);
+      await expect(page.locator('#view')).toHaveScreenshot(`${name}.png`, TOLERANCE);
+      expect(problems).toEqual([]);
+    });
+
+  test('a small thing added to the picture is a change', async ({ page }, info) => {
+    // while the pictures are being written this would write its own, button and all, over the start's
     test.skip(!['none', 'missing'].includes(info.config.updateSnapshots), 'the pictures are being written');
     // the gate held to itself: a button a fifth the size of a thumb, which a tolerance of a five-hundredth of the
     // pixels let through, and let through four times over in a game copied from here
@@ -59,7 +94,7 @@ test.describe('what it looks like', () => {
     await page.evaluate(() => {
       const g = window.game!;
       g.step(180);
-      g.look(0, 0, { azimuth: 0.9, polar: 0.95, radius: 90 });
+      // the standard view: the chase camera settled behind the rover where it starts, on the east road into the village
       g.step(1);
       const button = document.createElement('button');
       button.textContent = 'Go';
@@ -69,7 +104,7 @@ test.describe('what it looks like', () => {
     await hideStats(page);
     let seen = '';
     try {
-      await expect(page.locator('#view')).toHaveScreenshot('arena.png', { ...TOLERANCE, timeout: 5000 });
+      await expect(page.locator('#view')).toHaveScreenshot('start.png', { ...TOLERANCE, timeout: 5000 });
     } catch (e) {
       seen = String(e);
     }

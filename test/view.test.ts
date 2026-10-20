@@ -1,0 +1,246 @@
+import { UNDER_MUTATION } from './helpers';
+import { describe, expect, it } from 'vitest';
+import {
+  ChunkView,
+  FrameRung,
+  GROUND,
+  KIT,
+  RINGS,
+  RUNG,
+  RUNG_STEPS,
+  SightLine,
+  WORK,
+  frameWork,
+  tallness,
+} from '../src/view';
+import { CHUNK, TILE, type Placement } from '../src/world/types';
+import { heapSwing } from './models-helpers';
+
+/** A world ten chunks a side, from (0, 0). */
+const grid = { cols: 10 * CHUNK, rows: 10 * CHUNK, originX: 0, originY: 0, tile: TILE };
+const SIDE = CHUNK * TILE;
+
+describe('which chunks are drawn how', () => {
+  it('draws the ground finely round the target, coarser out to the mid ring, and coarsely past it', () => {
+    const v = new ChunkView(grid);
+    expect(v.update(4.5 * SIDE, 4.5 * SIDE)).toBe(true);
+    expect([v.cx, v.cy]).toEqual([4, 4]);
+    const at = (i: number, j: number) => v.lod[j * v.cols + i];
+    expect(at(4, 4)).toBe(GROUND.near);
+    expect(at(4 + RINGS.near, 4 - RINGS.near)).toBe(GROUND.near);
+    expect(at(4 + RINGS.near + 1, 4)).toBe(GROUND.mid);
+    expect(at(4, 4 + RINGS.mid)).toBe(GROUND.mid);
+    expect(at(4, 4 + RINGS.mid + 1)).toBe(GROUND.far);
+  });
+
+  it('draws the scenery whole round the target, far trees further out, and nothing past them', () => {
+    const v = new ChunkView(grid);
+    v.update(0.5 * SIDE, 0.5 * SIDE);
+    const at = (i: number, j: number) => v.kit[j * v.cols + i];
+    expect(at(0, 0)).toBe(KIT.whole);
+    expect(at(RINGS.kit, RINGS.kit)).toBe(KIT.whole);
+    expect(at(RINGS.kit + 1, 0)).toBe(KIT.far);
+    expect(at(RINGS.trees, RINGS.trees)).toBe(KIT.far);
+    expect(at(RINGS.trees + 1, 0)).toBe(KIT.none);
+  });
+
+  it('chooses again only when the target crosses into another chunk', () => {
+    const v = new ChunkView(grid);
+    expect(v.update(10, 10)).toBe(true);
+    expect(v.update(SIDE - 1, SIDE - 1)).toBe(false);
+    expect(v.update(SIDE + 1, 10)).toBe(true);
+    expect(v.cx).toBe(1);
+  });
+
+  it('holds a target off the world to the chunk at its edge', () => {
+    const v = new ChunkView(grid);
+    v.update(-500, 1e6);
+    expect([v.cx, v.cy]).toEqual([0, 9]);
+  });
+
+  it('draws the far trees out to fewer chunks when told, at once, and never inside the ring drawn whole', () => {
+    const v = new ChunkView(grid);
+    v.update(0.5 * SIDE, 0.5 * SIDE);
+    const at = (i: number, j: number) => v.kit[j * v.cols + i];
+    expect(v.setTrees(4)).toBe(true);
+    expect(at(4, 0)).toBe(KIT.far);
+    expect(at(5, 0)).toBe(KIT.none);
+    expect(v.setTrees(4)).toBe(false);
+    v.setTrees(0);
+    expect(v.trees).toBe(RINGS.kit);
+    expect(at(RINGS.kit, 0)).toBe(KIT.whole);
+    expect(at(RINGS.kit + 1, 0)).toBe(KIT.none);
+  });
+
+  it.skipIf(UNDER_MUTATION)('makes nothing as it is asked, chunk crossed or not', () => {
+    const v = new ChunkView(grid);
+    const at = new Float64Array(1);
+    expect(heapSwing(() => v.update((at[0] = (at[0] + 7) % (10 * SIDE)), 100), 12, 2000)).toBeLessThan(256 * 1024);
+  });
+});
+
+const tree = (x: number, y: number, kind: Placement['kind'] = 'broadleaf', scale = 1): Placement => ({
+  kind,
+  x,
+  y,
+  z: 0,
+  yaw: 0,
+  scale,
+  biome: 0,
+  vary: 0.5,
+});
+
+describe('the trees in the way', () => {
+  // the chase camera: 69 back along -x and 58 up, looking at the rover at the origin
+  const sight = new SightLine();
+  sight.set([-69, 0, 60], [0, 0, 2]);
+
+  it('takes a tree between the camera and the rover to be in the way', () => {
+    expect(sight.blocks(tree(-20, 0))).toBe(true);
+    expect(sight.blocks(tree(-20, 10))).toBe(true);
+  });
+
+  it('takes a tree outside the picture, off to its side or behind the camera, to be clear', () => {
+    expect(sight.blocks(tree(-20, 80))).toBe(false);
+    expect(sight.blocks(tree(-120, 0))).toBe(false);
+  });
+
+  it('cuts away a tree near the eye in the foot of the picture, though it is not on the line', () => {
+    // two thirds of the way from the eye to the rover's side, well to one side of the line, its crown filling the foot
+    expect(sight.inLine(tree(-45, 25))).toBe(false);
+    expect(sight.inFront(tree(-45, 25))).toBe(true);
+  });
+
+  it('leaves a tree beyond the near part of the view, off the line, standing', () => {
+    expect(sight.blocks(tree(10, 30))).toBe(false);
+  });
+
+  it('cuts away a house as it does a tree, and a short wall not at all', () => {
+    expect(tallness('cottage')).toBeGreaterThan(40);
+    expect(sight.blocks(tree(-30, 0, 'cottage'))).toBe(true);
+    expect(tallness('fence')).toBe(0);
+  });
+
+  it('takes a tree the camera is in to be in the way', () => {
+    expect(sight.blocks(tree(-66, 2, 'conifer', 1.3))).toBe(true);
+  });
+
+  it('takes a tree too short to reach the line, near the camera, to be clear', () => {
+    // the line is 40 up two thirds of the way back; a heath tree at a scale of a half is 14 tall
+    expect(sight.blocks(tree(-46, 0, 'twisted', 0.5))).toBe(false);
+  });
+
+  it('never takes a bush, a fern, a boulder or a reed to be in the way', () => {
+    for (const kind of ['bush', 'fern', 'boulder', 'reed'] as const) {
+      expect(tallness(kind)).toBe(0);
+      expect(sight.blocks(tree(-20, 0, kind))).toBe(false);
+    }
+  });
+
+  it.skipIf(UNDER_MUTATION)('makes nothing as it is asked', () => {
+    const t = tree(-20, 0);
+    expect(heapSwing(() => sight.blocks(t))).toBeLessThan(256 * 1024);
+  });
+
+  it('under a camera looking steeply down, cuts a crown filling a corner of the foot, and not one off the picture', () => {
+    const steep = new SightLine();
+    steep.set([-40, 0, 90], [0, 0, 2]);
+    expect(steep.inFront(tree(-25, 25))).toBe(true);
+    expect(steep.inFront(tree(-25, 70))).toBe(false);
+  });
+
+  it('takes a long wall across the line to be in it, and the same wall beside the line, along it, not', () => {
+    // a wall 36 long (18 each way along its heading) and 6 thick, its middle 14 to the side of the line near the rover
+    const across = { ...tree(-10, 14, 'wall'), yaw: Math.PI / 2 };
+    const along = { ...tree(-10, 14, 'wall'), yaw: 0 };
+    expect(sight.inLine(across)).toBe(true);
+    expect(sight.inLine(along)).toBe(false);
+  });
+
+  it('leaves a house beside the rover standing, though a tree there would be cut, unless it is in the line', () => {
+    // half the way to the rover, well to the side: in the foot for a tree, past the near part for a house
+    expect(sight.inFront(tree(-20, 30))).toBe(true);
+    expect(sight.inFront(tree(-20, 30, 'cottage'))).toBe(false);
+    expect(sight.inFront(tree(-55, 20, 'cottage'))).toBe(true);
+  });
+
+  it('widens the foot of the picture it cuts with a wider lens', () => {
+    const wide = new SightLine(),
+      narrow = new SightLine();
+    wide.set([-69, 0, 60], [0, 0, 2], [40, 2.4]);
+    narrow.set([-69, 0, 60], [0, 0, 2], [40, 1]);
+    // well to one side, two thirds of the way back: in the wide picture's foot and out of the narrow one's
+    const side = tree(-45, 32);
+    expect(wide.inFront(side)).toBe(true);
+    expect(narrow.inFront(side)).toBe(false);
+  });
+});
+
+describe('the frame-time rungs', () => {
+  const run = (r: FrameRung, dt: number, seconds: number) => {
+    let stepped = 0;
+    for (let t = 0; t < seconds; t += dt) if (r.step(dt)) stepped++;
+    return stepped;
+  };
+
+  it('stays on the top rung while the frames are quick', () => {
+    const r = new FrameRung();
+    expect(run(r, 1 / 60, 30)).toBe(0);
+    expect(r.rung).toBe(0);
+  });
+
+  it('steps down one rung once the frames have run slow for the hold, and not before', () => {
+    const r = new FrameRung();
+    expect(run(r, 1 / 30, RUNG.hold * 0.8)).toBe(0);
+    expect(run(r, 1 / 30, RUNG.hold)).toBe(1);
+    expect(r.rung).toBe(1);
+  });
+
+  it('steps down no further than the last rung, and never back up', () => {
+    const r = new FrameRung();
+    run(r, 1 / 20, 60);
+    expect(r.rung).toBe(RUNG_STEPS.length - 1);
+    run(r, 1 / 60, 30);
+    expect(r.rung).toBe(RUNG_STEPS.length - 1);
+  });
+
+  it('does not count a frame of a tab in the background, or a step of nothing', () => {
+    const r = new FrameRung();
+    run(r, 1, 30);
+    for (let k = 0; k < 600; k++) r.step(0);
+    expect(r.rung).toBe(0);
+  });
+
+  it('asks less of each rung down than of the one before', () => {
+    for (let k = 1; k < RUNG_STEPS.length; k++) {
+      const a = RUNG_STEPS[k - 1],
+        b = RUNG_STEPS[k];
+      expect(b.trees <= a.trees && b.grass <= a.grass && (a.finish || !b.finish)).toBe(true);
+      expect(b.trees < a.trees || b.grass < a.grass || b.finish !== a.finish).toBe(true);
+    }
+    expect(RUNG_STEPS[0].trees).toBe(RINGS.trees);
+  });
+
+  it.skipIf(UNDER_MUTATION)('makes nothing as it steps', () => {
+    const r = new FrameRung();
+    expect(heapSwing(() => r.step(1 / 60))).toBeLessThan(256 * 1024);
+  });
+});
+
+describe('a frame’s share of the scene’s work', () => {
+  it('splits a crossing over two frames while the game plays: the ground now, the pools next', () => {
+    expect(frameWork(true, false, false)).toBe(WORK.ground);
+    expect(frameWork(false, true, false)).toBe(WORK.refill);
+  });
+
+  it('does a crossing whole in a frame that must be settled: a test’s step, or a paused frame', () => {
+    // the final pass's bug: the step's picture showed the old pools, and the next frame's the new
+    expect(frameWork(true, false, true)).toBe(WORK.ground | WORK.refill);
+    expect(frameWork(false, true, true)).toBe(WORK.refill);
+  });
+
+  it('makes ground ahead of need only in a frame with nothing else to do, which changes nothing drawn', () => {
+    expect(frameWork(false, false, false)).toBe(WORK.ahead);
+    expect(frameWork(false, false, true)).toBe(WORK.ahead);
+  });
+});

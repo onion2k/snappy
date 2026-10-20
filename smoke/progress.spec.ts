@@ -19,7 +19,51 @@ async function play(page: Page, frames: number, stage: string) {
   expect(broken, `invariants after ${stage}`).toEqual([]);
 }
 
-test('600 frames of the arena pass with the music playing and no rule broken', async ({ page }) => {
+/**
+ * The way the road through the north ford runs there, anticlockwise from +x: read from the world's roads, which a
+ * test of the page cannot see, and said here so the rover is lined up on it.
+ */
+const NORTH_FORD_ROAD = 0.464;
+
+test('the rover drives through the north ford and on along its road, slowed in the water, breaking no rule', async ({
+  page,
+}) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  const ford = await page.evaluate(() => window.game!.content().landmarks.find((l) => l.name === 'north ford')!);
+  // forty units back from the ford along its road, facing across it
+  await page.evaluate(
+    ([x, y, yaw]) => window.game!.teleport(x - Math.cos(yaw) * 40, y - Math.sin(yaw) * 40, yaw),
+    [ford.x, ford.y, NORTH_FORD_ROAD],
+  );
+  await page.evaluate(() => window.game!.drive(1, 0));
+  let wettest = 0,
+    slowestWet = Infinity,
+    fastestDry = 0;
+  const surfaces = new Set<string>();
+  for (let leg = 0; leg < 20; leg++) {
+    await play(page, 30, `leg ${leg} of the drive`);
+    const r = await page.evaluate(() => window.game!.rover());
+    surfaces.add(r.surface);
+    if (r.wet > 0) slowestWet = Math.min(slowestWet, Math.abs(r.speed));
+    else fastestDry = Math.max(fastestDry, Math.abs(r.speed));
+    wettest = Math.max(wettest, r.wet);
+    expect(r.blocked, `blocked on leg ${leg} at ${r.x.toFixed(1)}, ${r.y.toFixed(1)}`).toBe(false);
+  }
+  await page.evaluate(() => window.game!.release());
+  const r = await page.evaluate(() => window.game!.rover());
+  // across: the ford left behind, along the way it was driven
+  const past = (r.x - ford.x) * Math.cos(NORTH_FORD_ROAD) + (r.y - ford.y) * Math.sin(NORTH_FORD_ROAD);
+  expect(past, 'past the ford').toBeGreaterThan(30);
+  expect(wettest, 'in the water on the way').toBeGreaterThan(0);
+  expect(wettest, 'and never deeper than a ford').toBeLessThanOrEqual(1.2);
+  expect(slowestWet, 'slowed in it').toBeLessThan(fastestDry);
+  expect(surfaces.has('dirt'), `on the road: ${[...surfaces].join(', ')}`).toBe(true);
+  expect(r.tracks, 'tracks laid on the road').toBeGreaterThan(0);
+  expect(problems).toEqual([]);
+});
+
+test('600 frames of the world pass with the music playing and no rule broken', async ({ page }) => {
   const problems = watch(page);
   await start(page, { seed: 1, paused: true });
   await page.evaluate(() => window.game!.wake());
