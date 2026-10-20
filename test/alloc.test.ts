@@ -62,6 +62,8 @@ it.skipIf(UNDER_MUTATION)('makes nothing in a frame of the rover, the camera and
     d.steer = f % 600 < 400 ? Math.sin(f / 50) : 0;
     r.lookAt(cam.position[0], cam.position[1], cam.position[2]);
     r.step(1 / 60, d);
+    // Q held and let go by turns, and the view turned round while it stands, so it both holds and comes back
+    cam.keyTurn = f % 600 < 450 ? 0 : f % 600 < 500 ? 1 : -1;
     cam.update(r, plane, 1 / 60);
     // the time as the frame's count, a whole number: a fraction made here and handed to a call is boxed, which is the
     // caller's doing and not the tracks'

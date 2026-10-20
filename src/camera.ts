@@ -87,6 +87,14 @@ export const CHASE = {
   above: 0.6,
   /** How quickly it eases to a new zoom. */
   zoomEase: 6,
+  /**
+   * The player's own look round, by dragging the view or with Q and E. `least` and `most` are the tilt's ends, in
+   * degrees from straight down: lower than 30 looks into the trees, higher than 80 is mostly sky. `keys` is how fast
+   * Q and E turn it, in radians a second. It holds while the rover stands or creeps; once it has gone faster than
+   * `drive` for `wait` seconds it eases back behind the heading at `back`, so the controls, which turn the rover
+   * itself, match the view whenever it is driven.
+   */
+  orbit: { least: 30, most: 80, keys: 1.8, drive: 5, wait: 1, back: 2 },
   /** How far above the ground, or a roof, its line and its eye keep, in units; the line's is reached `marginRun` units out. */
   margin: 3,
   marginRun: 20,
@@ -107,11 +115,24 @@ const EDGE = 1e-3;
 /** How many places along the camera's line the check looks. */
 const LINE_SAMPLES = 64;
 
+/** A whole turn, in radians. */
+const TURN = 2 * Math.PI;
 /** An angle brought within half a turn either way of nought. */
 export const wrap = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 /** The share of the way a rate eases in `dt`. */
 const ease = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
+
+/**
+ * A drag across the view as a turn and a tilt, in radians: a drag the view's height across turns it half way round,
+ * and the same up or down tilts it a quarter turn. Dragged right, the land turns right under it, so the camera goes
+ * round the other way; dragged up, it looks further out.
+ */
+export function dragOrbit(dx: number, dy: number, height: number, out: Float64Array): void {
+  const h = height > 0 ? height : 1;
+  out[0] = (-dx / h) * Math.PI;
+  out[1] = (-dy / h) * (Math.PI / 2);
+}
 
 /** How far ahead it looks standing, as a share of its distance: `still` to home, growing to `stillFar` right out. */
 export function stillAt(distance: number): number {
@@ -142,6 +163,24 @@ export class ChaseCamera {
   zoom: number = CHASE.home;
   /** Its angle from straight down, in radians, as it was last placed. */
   tilt = tiltAt(CHASE.home);
+  /**
+   * The player's look round: how far it is turned from behind the heading, in radians, and how far tilted from the
+   * zoom's own tilt; and which way Q or E turns it now, one, nought or minus one, set by the page each frame (a whole
+   * number, so setting it makes nothing).
+   */
+  keyTurn = 0;
+  /**
+   * The look round's turn and tilt, and how long the rover has been going faster than `CHASE.orbit.drive`, in seconds:
+   * held in an array and not in fields, since a field written a fraction every frame was boxed each time by V8, a
+   * number made a frame while Q or E was held (the allocation test caught it).
+   */
+  private readonly look = new Float64Array(3);
+  get offset(): number {
+    return this.look[0];
+  }
+  get bend(): number {
+    return this.look[1];
+  }
 
   private azimuthRate = 0;
   private leadX = 0;
@@ -152,6 +191,20 @@ export class ChaseCamera {
   private roverX = 0;
   private roverY = 0;
 
+  /**
+   * Turn it round the rover by `turn` radians, anticlockwise, and tilt it by `tilt` toward the horizon: at once, and held
+   * until the rover is driven, the tilt kept within `CHASE.orbit`'s ends.
+   */
+  orbitBy(turn: number, tilt: number): void {
+    if (!Number.isFinite(turn) || !Number.isFinite(tilt)) return;
+    const look = this.look;
+    look[0] = wrap(look[0] + turn);
+    this.azimuth = wrap(this.azimuth + turn);
+    const base = tiltAt(this.zoom);
+    look[1] = clamp(look[1] + tilt, CHASE.orbit.least * DEG - base, CHASE.orbit.most * DEG - base);
+    look[2] = 0;
+  }
+
   /** Bring it nearer (under one) or further (over one), within the zoom's ends. */
   zoomBy(factor: number): void {
     if (!(factor > 0) || !Number.isFinite(factor)) return;
@@ -160,6 +213,7 @@ export class ChaseCamera {
 
   /** Put it where it settles behind the rover, at once: a new game, or a teleport. */
   snap(r: Followed, g: Ground): void {
+    this.look.fill(0);
     this.azimuth = wrap(r.yaw);
     this.azimuthRate = 0;
     this.distance = this.zoom;
@@ -179,9 +233,29 @@ export class ChaseCamera {
     if (!(dt > 0)) return;
     this.distance += (this.zoom - this.distance) * ease(CHASE.zoomEase, dt);
 
-    // a critically damped swing toward the heading, the short way round
+    // the player's look round: Q and E turn it; it holds while the rover stands or creeps, and once it has been driven
+    // a while it eases back behind the heading
+    const o = CHASE.orbit,
+      look = this.look;
+    if (this.keyTurn !== 0) {
+      const turn = this.keyTurn * o.keys * dt;
+      // wrapped in place: `wrap` called here was not inlined by V8 and boxed its result, a number a frame. The azimuth
+      // is wrapped by the swing below, in this same step
+      const turned = look[0] + turn;
+      look[0] = turned - TURN * Math.round(turned / TURN);
+      this.azimuth += turn;
+      look[2] = 0;
+    }
+    look[2] = Math.abs(r.speed) > o.drive ? look[2] + dt : 0;
+    if (look[2] > o.wait) {
+      const back = ease(o.back, dt);
+      look[0] -= look[0] * back;
+      look[1] -= look[1] * back;
+    }
+
+    // a critically damped swing toward the heading and the look round, the short way round
     const w = CHASE.swing;
-    this.azimuthRate += (w * w * wrap(r.yaw - this.azimuth) - 2 * w * this.azimuthRate) * dt;
+    this.azimuthRate += (w * w * wrap(r.yaw + look[0] - this.azimuth) - 2 * w * this.azimuthRate) * dt;
     this.azimuth = wrap(this.azimuth + this.azimuthRate * dt);
 
     // the lead: a little ahead standing, more going, and back toward it reversing
@@ -222,7 +296,7 @@ export class ChaseCamera {
     // where it looks is over the ground there: the lead can put it anywhere ahead, down a slope or under a lip
     const floor = g.heightAt(tx, ty) + NEAR_CLEAR;
     let tz = Math.max(this.target[2], floor);
-    const nominal = tiltAt(this.distance);
+    const nominal = clamp(tiltAt(this.distance) + this.look[1], CHASE.orbit.least * DEG, CHASE.orbit.most * DEG);
     const reach = this.distance * Math.sin(nominal);
     // how far back along the line the rover is: a wall between it and where it looks is not in the way of seeing it
     const rover = (this.roverX - tx) * bx + (this.roverY - ty) * by;

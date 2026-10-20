@@ -2,7 +2,7 @@
  * The game played by a monkey: the real game, without the picture, driven
  * at random and made to do at random everything a player can make happen —
  * driving about, stopping, spinning on the spot, setting off for somewhere
- * far, zooming the camera, saving and loading — and checked after every few
+ * far, zooming the camera and turning it round, saving and loading — and checked after every few
  * frames for anything that must always hold and does not (`invariants.ts`,
  * the camera's rules among them, since the monkey holds a camera as the page
  * does), and for anything thrown.
@@ -143,6 +143,14 @@ export function fuzz(seed: number, frames: number): FuzzResult {
         () => {
           camera.zoomBy(random() < 0.5 ? between(0.5, 0.9) : between(1.1, 2));
           did('zoom');
+        },
+      ],
+      [
+        1,
+        () => {
+          // the view turned round the rover and tilted, as a drag or Q and E do, anywhere at all
+          camera.orbitBy(between(-Math.PI, Math.PI), between(-0.8, 0.8));
+          did('orbit');
         },
       ],
       [

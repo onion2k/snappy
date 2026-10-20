@@ -71,6 +71,11 @@ export interface CameraState {
   position: [number, number, number];
   /** How far back it is, in units. */
   distance: number;
+  /** The way it faces across the ground, anticlockwise from +x, and its angle from straight down, in radians. */
+  azimuth: number;
+  tilt: number;
+  /** How far the player has turned it from behind the rover's heading, in radians: nought once it has come back. */
+  offset: number;
 }
 
 /** The sound as the game stands: for a test to read, since what is heard cannot be. */
@@ -114,6 +119,8 @@ export interface GameApi {
   teleport(x: number, y: number, yaw?: number): void;
   /** The camera's distance multiplied by `factor`, as the wheel or a pinch does. */
   zoom(factor: number): void;
+  /** The camera turned round the rover by `turn` radians and tilted by `tilt`, as a drag on the view or Q and E do. */
+  orbit(turn: number, tilt: number): void;
   /** What has happened since this was last asked, a line each; the page tells of nothing yet. */
   events(): string[];
   /** The rules that must always hold, broken; empty when all is well. */
@@ -156,6 +163,7 @@ export interface DebugHost {
   /** The camera put behind the rover at once, as after a teleport. */
   snap(): void;
   zoom(factor: number): void;
+  orbit(turn: number, tilt: number): void;
   measureFrame(warm?: number): Promise<number>;
   sound(): SoundState;
   mute(on: boolean): void;
@@ -230,6 +238,7 @@ export function createApi(host: DebugHost): GameApi {
       host.snap();
     },
     zoom: (factor) => host.zoom(factor),
+    orbit: (turn, tilt) => host.orbit(turn, tilt),
     events() {
       return host.events.splice(0);
     },

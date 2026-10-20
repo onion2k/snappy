@@ -32,6 +32,7 @@ const LOOK_SCENES: [string, keyof typeof GAME_VIEWS][] = [
   ['ruin', 'game-ruin'],
   ['ford', 'game-ford'],
   ['rover', 'game-idle'],
+  ['orbit', 'game-orbit'],
   ['far', 'game-farthest'],
 ];
 

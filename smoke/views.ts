@@ -25,6 +25,8 @@ export interface GameView {
   drive?: [number, number, number][];
   /** How many frames are stepped after, for the camera to settle: past the rover's idle, so its face is seen. */
   settle?: number;
+  /** The view turned round the rover and tilted, in radians, as a drag on it does, once the rover is placed. */
+  orbit?: [number, number];
 }
 
 /** Frames enough for the camera to settle and the rover, idle two seconds, to turn and look up at it. */
@@ -46,6 +48,8 @@ export const GAME_VIEWS: Record<string, GameView> = {
   'game-close': { at: 'start', zoom: 0.45 },
   // the rover close to, stood idle long enough to turn and look at the camera, and blink
   'game-idle': { at: 'start', zoom: 0.4, yaw: Math.PI, settle: 300 },
+  // the view turned three-quarters round and tipped toward the horizon, looking back past the rover the way it came
+  'game-orbit': { at: 'start', yaw: Math.PI, orbit: [Math.PI * 0.75, 0.35], settle: 240 },
   // a bank the rover cannot climb, from the viewpoint the world gives for it, facing up its face
   'game-bank': { at: 'fort hill', bank: 'fort hill scarp', zoom: 0.6 },
   // right out: the far zoom, the horizon and the clouds
@@ -101,6 +105,7 @@ export async function placeView(page: Page, view: GameView): Promise<string> {
         g.step(frames);
       }
       if (v.drive) g.release();
+      if (v.orbit) g.orbit(v.orbit[0], v.orbit[1]);
       g.step(v.settle ?? settle);
       return place.name;
     },

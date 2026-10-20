@@ -4,7 +4,7 @@
  * into the ground and rises over the cottage.
  */
 import { describe, expect, it } from 'vitest';
-import { CAMERA_CLEAR, CHASE, ChaseCamera, cameraProblems, stillAt } from '../src/camera';
+import { CAMERA_CLEAR, CHASE, ChaseCamera, cameraProblems, dragOrbit, stillAt, tiltAt, wrap } from '../src/camera';
 import { seeded } from '../src/random';
 import { ROVER, Rover } from '../src/rover';
 import { FIXTURE, fixtureAt, fixtureWorld } from '../src/world/fixture';
@@ -400,5 +400,140 @@ describe('what is wrong with a camera', () => {
     // from the plateau's height, looking through the bank at the ground beyond it
     expect(cameraProblems({ position: [fx + 40, fy, 6], target: [px - 30, py, 1] }, g).join()).toMatch(/passes under/);
     expect(cameraProblems(at(NaN, y, 60), g).join()).toMatch(/not a number/);
+  });
+});
+
+describe('looking round', () => {
+  const DEG = Math.PI / 180;
+  /** The camera's bearing from the rover across the ground, anticlockwise from +x: behind is the heading turned half round. */
+  const bearing = (cam: ChaseCamera, r: Rover) => Math.atan2(cam.position[1] - r.y, cam.position[0] - r.x);
+
+  it('turns round the rover at once, by as much as it is turned, and holds there while the rover stands', () => {
+    const r = roverAt(16, 2, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    expect(bearing(cam, r)).toBeCloseTo(Math.PI, 1);
+    cam.orbitBy(Math.PI / 2, 0);
+    follow(cam, r, 0.5);
+    // turned a quarter round, anticlockwise: it faces north now, and stands south of where it looks
+    expect(wrap(cam.azimuth - Math.PI / 2)).toBeCloseTo(0, 3);
+    expect(cam.position[1]).toBeLessThan(cam.target[1] - 50);
+    const at = bearing(cam, r);
+    follow(cam, r, 5);
+    expect(bearing(cam, r)).toBeCloseTo(at, 3);
+    expect(cam.offset).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('tilts toward the horizon and down again, held within thirty and eighty degrees from straight down', () => {
+    const r = roverAt(16, 2, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    cam.orbitBy(0, 10 * DEG);
+    follow(cam, r, 1);
+    expect(tiltOf(cam)).toBeCloseTo(59, 0);
+    cam.orbitBy(0, 2);
+    follow(cam, r, 1);
+    expect(tiltOf(cam)).toBeCloseTo(CHASE.orbit.most, 0);
+    // held at the end itself, and not past it to be cut back each frame, so a tilt back the other way acts at once
+    expect(cam.bend).toBeCloseTo(CHASE.orbit.most * DEG - tiltAt(cam.zoom), 6);
+    cam.orbitBy(0, -4);
+    follow(cam, r, 1);
+    expect(tiltOf(cam)).toBeCloseTo(CHASE.orbit.least, 0);
+    expect(cam.bend).toBeCloseTo(CHASE.orbit.least * DEG - tiltAt(cam.zoom), 6);
+  });
+
+  it('comes back behind the rover and to its own tilt once it has been driven a second, and not for a tap', () => {
+    const r = roverAt(3, 15.5, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    cam.orbitBy(Math.PI * 0.8, 15 * DEG);
+    // a tap: a third of a second of driving, then still
+    for (let f = 0; f < 20; f++) {
+      r.step(DT, { throttle: 1, steer: 0 });
+      cam.update(r, g, DT);
+    }
+    for (let f = 0; f < 60; f++) {
+      r.step(DT, { throttle: 0, steer: 0 });
+      cam.update(r, g, DT);
+    }
+    expect(cam.offset, 'held after a tap').toBeCloseTo(Math.PI * 0.8, 3);
+    // driven along the road: past a second it lets go, and three seconds on it is behind and at its own tilt
+    for (let f = 0; f < 4 * 60; f++) {
+      r.step(DT, { throttle: 1, steer: 0 });
+      cam.update(r, g, DT);
+    }
+    expect(Math.abs(cam.offset)).toBeLessThan(0.05);
+    expect(Math.abs(cam.bend)).toBeLessThan(0.01);
+    expect(Math.abs(wrap(cam.azimuth - r.yaw))).toBeLessThan(0.08);
+    expect(tiltOf(cam)).toBeCloseTo((tiltAt(cam.distance) * 180) / Math.PI, 0);
+  });
+
+  it('turns with Q and E as long as they are held, and holds where they leave it', () => {
+    const r = roverAt(16, 2, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    cam.keyTurn = 1;
+    follow(cam, r, 0.5);
+    expect(cam.offset).toBeCloseTo(CHASE.orbit.keys * 0.5, 2);
+    cam.keyTurn = -1;
+    follow(cam, r, 0.25);
+    expect(cam.offset).toBeCloseTo(CHASE.orbit.keys * 0.25, 2);
+    cam.keyTurn = 0;
+    follow(cam, r, 2);
+    expect(cam.offset).toBeCloseTo(CHASE.orbit.keys * 0.25, 2);
+    // held past half a turn, round and round: both angles stay within half a turn of nought, and agree
+    cam.keyTurn = 1;
+    for (let f = 0; f < 3 * 60; f++) {
+      cam.update(r, g, DT);
+      expect(Math.abs(cam.offset)).toBeLessThanOrEqual(Math.PI);
+      expect(Math.abs(cam.azimuth)).toBeLessThanOrEqual(Math.PI);
+    }
+    expect(wrap(cam.offset - CHASE.orbit.keys * 3.25)).toBeCloseTo(0, 2);
+    expect(wrap(cam.azimuth - (r.yaw + cam.offset))).toBeCloseTo(0, 1);
+  });
+
+  it('never puts its eye in the ground or the cottage, at any turn and tilt, by the cottage, the bank and the ledge', () => {
+    for (const [tx, ty] of [
+      [22, 8.5],
+      [16, 24],
+      [19, 23],
+      [10, 24],
+    ] as const) {
+      const r = roverAt(tx, ty, 0);
+      for (let turn = 0; turn < 8; turn++)
+        for (const tilt of [-0.5, 0.5]) {
+          const cam = new ChaseCamera();
+          cam.snap(r, g);
+          cam.orbitBy((turn * Math.PI) / 4, tilt);
+          follow(cam, r, 0.5);
+          expect(cameraProblems(cam, g), `at ${tx},${ty} turned ${turn}/8, tilted ${tilt}`).toEqual([]);
+        }
+    }
+  });
+
+  it('takes nothing it cannot use, and starts again behind the rover when snapped', () => {
+    const r = roverAt(16, 2, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    cam.orbitBy(NaN, 0);
+    cam.orbitBy(0, Infinity);
+    expect(cam.offset).toBe(0);
+    expect(cam.bend).toBe(0);
+    cam.orbitBy(1, 0.1);
+    cam.snap(r, g);
+    expect(cam.offset).toBe(0);
+    expect(cam.bend).toBe(0);
+  });
+
+  it('reads a drag as a turn and a tilt: the view’s height across is half a turn, up or down a quarter', () => {
+    const out = new Float64Array(2);
+    dragOrbit(800, 0, 800, out);
+    expect(out[0]).toBeCloseTo(-Math.PI, 6);
+    expect(out[1]).toBeCloseTo(0, 6);
+    dragOrbit(0, -400, 800, out);
+    expect(out[0]).toBeCloseTo(0, 6);
+    expect(out[1]).toBeCloseTo(Math.PI / 4, 6);
+    dragOrbit(10, 10, 0, out);
+    expect(Number.isFinite(out[0]) && Number.isFinite(out[1])).toBe(true);
   });
 });

@@ -193,3 +193,26 @@ describe('keys and the stick together, and the override', () => {
     expect(input.read().throttle).toBe(1);
   });
 });
+
+describe('the keys that look round', () => {
+  it('turn the view with Q to the left and E to the right, and both or neither not at all', () => {
+    const { input, press, lift } = setup();
+    expect(input.look()).toBe(0);
+    press('KeyQ');
+    expect(input.look()).toBe(1);
+    press('KeyE');
+    expect(input.look()).toBe(0);
+    lift('KeyQ');
+    expect(input.look()).toBe(-1);
+    lift('KeyE');
+    expect(input.look()).toBe(0);
+  });
+
+  it('do not drive, and are let go on blur', () => {
+    const { target, input, press } = setup();
+    press('KeyQ');
+    expect(input.read()).toEqual({ throttle: 0, steer: 0 });
+    target.dispatchEvent(new Event('blur'));
+    expect(input.look()).toBe(0);
+  });
+});

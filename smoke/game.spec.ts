@@ -100,6 +100,38 @@ test('keeps the mute across a reload', async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
+test('looks round with a drag on the view and with Q and E, and comes back behind once driven', async ({ page }) => {
+  const problems = watch(page);
+  await start(page, { seed: 1, paused: true });
+  await page.evaluate(() => window.game!.step(1));
+  const view = (await page.locator('#view').boundingBox())!;
+  // dragged a quarter of the view's height to the right: an eighth of a turn, the camera going round the other way
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(view.x + view.width / 2 + view.height / 4, view.y + view.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.evaluate(() => window.game!.step(1));
+  const dragged = await page.evaluate(() => window.game!.camera());
+  expect(dragged.offset).toBeCloseTo(-Math.PI / 4, 1);
+  // Q held for half a second of the game's time turns it back the other way
+  await page.keyboard.down('KeyQ');
+  await page.evaluate(() => window.game!.step(30));
+  await page.keyboard.up('KeyQ');
+  const keyed = await page.evaluate(() => window.game!.camera());
+  expect(keyed.offset).toBeGreaterThan(dragged.offset + 0.5);
+  // stood still it holds; driven a few seconds it is back behind the rover
+  await page.evaluate(() => window.game!.step(120));
+  expect((await page.evaluate(() => window.game!.camera())).offset).toBeCloseTo(keyed.offset, 3);
+  await page.evaluate(() => {
+    window.game!.drive(1, 0);
+    window.game!.step(300);
+    window.game!.release();
+  });
+  expect(Math.abs((await page.evaluate(() => window.game!.camera())).offset)).toBeLessThan(0.05);
+  expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 400, height: 860 }, hasTouch: true, isMobile: true });
 
@@ -131,7 +163,31 @@ test.describe('on a phone', () => {
     const after = await page.evaluate(() => window.game!.rover());
     const ahead = (after.x - before.x) * Math.cos(before.yaw) + (after.y - before.y) * Math.sin(before.yaw);
     expect(ahead, 'driven forward').toBeGreaterThan(5);
+    expect(
+      (await page.evaluate(() => window.game!.camera())).offset,
+      'the stick drives, and does not turn the view',
+    ).toBe(0);
     expect(await page.evaluate(() => window.game!.invariants())).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+
+  test('looks round with one finger dragged on the view, away from the stick', async ({ page }) => {
+    const problems = watch(page);
+    await start(page, { seed: 1, paused: true });
+    await page.evaluate(() => window.game!.step(1));
+    // a finger, as the browser tells of one: pointer events of the touch kind, on the view itself
+    await page.evaluate(() => {
+      const view = document.getElementById('view')!;
+      const at = (type: string, x: number) =>
+        view.dispatchEvent(
+          new PointerEvent(type, { pointerId: 7, pointerType: 'touch', clientX: x, clientY: 300, bubbles: true }),
+        );
+      at('pointerdown', 200);
+      for (let x = 190; x >= 100; x -= 10) at('pointermove', x);
+      at('pointerup', 100);
+      window.game!.step(1);
+    });
+    expect((await page.evaluate(() => window.game!.camera())).offset).toBeGreaterThan(0.2);
     expect(problems).toEqual([]);
   });
 });

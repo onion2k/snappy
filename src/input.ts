@@ -1,6 +1,7 @@
 /**
  * The controls: W A S D or the arrows on a keyboard, and a thumb stick on a
- * phone, read as one throttle and one steer. Tank controls, the same for
+ * phone, read as one throttle and one steer; and Q and E, which turn the
+ * view round the rover. Tank controls, the same for
  * both: forward and back drive, left and right turn on the spot. Something
  * other than a person, the test API, can hold the controls instead.
  *
@@ -95,11 +96,15 @@ const KEYS: Record<string, number> = {
   ArrowLeft: 32,
   KeyD: 64,
   ArrowRight: 128,
+  KeyQ: 256,
+  KeyE: 512,
 };
 const FORWARD = 1 | 2,
   BACK = 4 | 8,
   LEFT = 16 | 32,
-  RIGHT = 64 | 128;
+  RIGHT = 64 | 128,
+  LOOK_LEFT = 256,
+  LOOK_RIGHT = 512;
 /** Keys the page would scroll for: kept from it, repeats and all. */
 const QUIET = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
 
@@ -157,6 +162,11 @@ export class Input {
     d.throttle = Math.abs(s.throttle) > Math.abs(throttle) ? s.throttle : throttle;
     d.steer = Math.abs(s.steer) > Math.abs(steer) ? s.steer : steer;
     return d;
+  }
+
+  /** Which way Q and E turn the view now: one for Q (round to the left), minus one for E, nought for both or neither. */
+  look(): number {
+    return (this.down & LOOK_LEFT ? 1 : 0) - (this.down & LOOK_RIGHT ? 1 : 0);
   }
 
   dispose(): void {

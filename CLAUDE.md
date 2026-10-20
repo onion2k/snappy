@@ -246,8 +246,9 @@ with `pause`, `resume`, `seed`, `teleport`, `drive` and `release`, plays it
 with `step(frames)`, and reads it back with `state` (`t`, `frame`,
 `paused`), `rover`, `camera`, `ground(x, y)`, `events`, `invariants` (the
 camera's rules among them), `content` (the bounds, the start, the
-landmarks) and `save`. `zoom` works the chase camera and `look` aims it by
-hand. `mute`, `wake` (the first gesture) and `sound` work the sound, and
+landmarks) and `save`. `zoom` and `orbit` work the chase camera as the
+wheel, a drag and Q and E do (`camera()` reads its azimuth, tilt and how far
+it is turned), and `look` aims it by hand. `mute`, `wake` (the first gesture) and `sound` work the sound, and
 `measureFrame` and `bootMs` are the perf gate's. Unit tests get a game without a page from
 `newGame(seed)` in `test/helpers.ts`, and `memoryStore` in `src/progress.ts`
 stands in for a save. A new rule or kind of thing gains its reading here

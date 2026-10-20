@@ -8,7 +8,7 @@
  */
 import { createContext } from 'artshape-render/gpu/context';
 import { GameRenderer } from 'artshape-render/game/renderer';
-import { ChaseCamera } from './camera';
+import { ChaseCamera, dragOrbit } from './camera';
 import { createApi, type CameraState } from './debug';
 import { frameCost } from './frame-cost';
 import { Game } from './game';
@@ -119,23 +119,39 @@ async function main() {
     },
     { passive: false },
   );
-  // a pinch: two fingers on the view, the camera taken out as they close and in as they open
+  // a drag on the view with one pointer, a mouse or a finger (the stick is an element of its own and takes its own),
+  // turns the camera round the rover to look about; two fingers pinch, the camera taken out as they close and in as
+  // they open
   const fingers = new Map<number, { x: number; y: number }>();
   let spread = 0;
+  const turned = new Float64Array(2);
   const apart = () => {
     const [a, b] = [...fingers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'touch') return;
     fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // kept to the view as it is dragged off it, where the browser can: it refuses a pointer it has already let go of
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // the drag still turns the view while it is over it
+    }
     if (fingers.size === 2) spread = apart();
   });
   canvas.addEventListener('pointermove', (e) => {
     const f = fingers.get(e.pointerId);
     if (!f) return;
+    const dx = e.clientX - f.x,
+      dy = e.clientY - f.y;
     f.x = e.clientX;
     f.y = e.clientY;
+    if (fingers.size === 1) {
+      manual = null;
+      dragOrbit(dx, dy, canvas.clientHeight, turned);
+      chase.orbitBy(turned[0], turned[1]);
+      return;
+    }
     if (fingers.size !== 2) return;
     const now = apart();
     if (spread > 0 && now > 0) {
@@ -232,6 +248,8 @@ async function main() {
     // whoever is looking: the chase camera, which the rover's head turns to when it has idled a while
     game.rover.lookAt(chase.position[0], chase.position[1], chase.position[2]);
     game.step(dt, input.read());
+    chase.keyTurn = input.look();
+    if (chase.keyTurn !== 0) manual = null;
     chase.update(game.rover, game.ground, dt);
     // after the game, so that a game that is not stepping has no music
     sound.step(dt);
@@ -279,6 +297,9 @@ async function main() {
       target: [target[0], target[1], target[2]],
       position: [position[0], position[1], position[2]],
       distance: manual ? manual.distance : chase.distance,
+      azimuth: chase.azimuth,
+      tilt: chase.tilt,
+      offset: chase.offset,
     };
   };
   window.game = createApi({
@@ -320,6 +341,10 @@ async function main() {
     zoom(factor) {
       manual = null;
       chase.zoomBy(factor);
+    },
+    orbit(turn, tilt) {
+      manual = null;
+      chase.orbitBy(turn, tilt);
     },
     measureFrame,
     wake,
