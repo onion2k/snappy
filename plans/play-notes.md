@@ -1,6 +1,6 @@
 # Play notes, 2026-10-21: six fixes, six commits
 
-State: building, part 6 of 6.
+State: landed on main at 731cfab, 2026-10-21.
 
 Copied to `plans/play-notes.md` in the repo as the first act of building, and
 ticked there (the kit's `checks/plans.md`). Built on `sonnet` or by the
