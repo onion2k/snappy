@@ -611,3 +611,123 @@ describe('the small scenery at the edge of the ring drawn whole', () => {
     expect(seen, `of ${outer.length} in the ring past the whole one`).toBeLessThan(outer.length);
   }, 60_000);
 });
+
+describe('what the scene hands the renderer only when it changes', () => {
+  const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+  const MARKS = 2048 * 16,
+    RINGS_LEN = 36 * 16,
+    COLOURS = 2048 * 4;
+  /** The calls that wrote the tracks' matrices, their colours, and the rings, by the size of what was handed over. */
+  const calls = { marks: 0, colours: 0, rings: 0 };
+  const recording: Draws = {
+    ...draws,
+    move: (_group: number, m: Float32Array) => {
+      if (m.length === MARKS) calls.marks++;
+      else if (m.length === RINGS_LEN) calls.rings++;
+    },
+    tint: (_group: number, c: Float32Array) => {
+      if (c.length === COLOURS) calls.colours++;
+    },
+  };
+  let scene: Scene;
+  const reset = () => {
+    calls.marks = calls.colours = calls.rings = 0;
+  };
+
+  beforeAll(async () => {
+    scene = new Scene(game.map, game.ground, recording);
+    await scene.build([game.map.start.x, game.map.start.y, 0]);
+  }, 60_000);
+
+  /** One frame at game time `t` with the rover where it is. */
+  function frameAt(t: number) {
+    game.t = t;
+    const r = game.rover;
+    r.z = game.ground.heightAt(r.x, r.y);
+    scene.frame(game, eyeBehind(r.x, r.y, r.z), [r.x, r.y, r.z], 1 / 60, false);
+  }
+
+  /** A mark laid by hand, as the tracks would, at game time `t`. */
+  function lay(t: number) {
+    const k = game.tracks;
+    const i = k.next;
+    k.x[i] = game.rover.x;
+    k.y[i] = game.rover.y;
+    k.z[i] = game.rover.z;
+    k.yaw[i] = 0;
+    k.born[i] = t;
+    k.next = (i + 1) % k.capacity;
+    k.count = Math.min(k.capacity, k.count + 1);
+  }
+
+  it('writes the tracks for no frame in which none was laid, and for a mark laid at most every tenth of a second', () => {
+    const { x, y } = game.map.start;
+    game.rover.x = x;
+    game.rover.y = y;
+    frameAt(100);
+    // with none laid, nothing is written, frame after frame
+    reset();
+    for (let k = 1; k <= 5; k++) frameAt(100 + k / 60);
+    expect(calls.marks + calls.colours).toBe(0);
+    // the first mark is written at once, matrices and colours together
+    lay(100.1);
+    frameAt(100.1);
+    expect(calls).toMatchObject({ marks: 1, colours: 1 });
+    // a mark laid a frame later waits for the tenth of a second to be up, and is written then with the colours
+    reset();
+    lay(100.12);
+    frameAt(100.12);
+    frameAt(100.15);
+    expect(calls.marks + calls.colours, 'held back').toBe(0);
+    frameAt(100.21);
+    expect(calls).toMatchObject({ marks: 1, colours: 1 });
+    // and the frames after it write nothing
+    reset();
+    frameAt(100.22);
+    frameAt(100.23);
+    expect(calls.marks + calls.colours).toBe(0);
+  });
+
+  it('writes the rings for no frame without one alive, and once more after the last has gone', () => {
+    // the rover in the water: a point that is deep enough for all of it, found along the world
+    let wet: { x: number; y: number } | null = null;
+    const { bounds } = game.ground;
+    for (let y = bounds.minY; y < bounds.maxY && !wet; y += 3)
+      for (let x = bounds.minX; x < bounds.maxX && !wet; x += 3) {
+        let all = game.ground.waterDepthAt(x, y) > 0;
+        for (let w = 0; w < 6 && all; w++) all = game.ground.waterDepthAt(x + (w - 3) * 0.4, y) > 0;
+        if (all) wet = { x, y };
+      }
+    expect(wet, 'water to wade in').not.toBeNull();
+    const r = game.rover;
+    r.x = wet!.x;
+    r.y = wet!.y;
+    r.speed = 0;
+    // a quiet frame or two, and then none writes the rings
+    frameAt(200);
+    frameAt(200 + 1 / 60);
+    reset();
+    for (let k = 2; k <= 6; k++) frameAt(200 + k / 60);
+    expect(calls.rings, 'none alive').toBe(0);
+    // driven in the water, a ring is born and written every frame while it lives
+    r.speed = 4;
+    for (let w = 0; w < 6; w++) {
+      r.wheelX[w] = wet!.x + (w - 3) * 0.4;
+      r.wheelY[w] = wet!.y;
+    }
+    reset();
+    frameAt(201);
+    expect(calls.rings, 'one born').toBe(1);
+    r.speed = 0;
+    frameAt(201.5);
+    frameAt(201.9);
+    expect(calls.rings, 'alive').toBe(3);
+    // spent, written once more, so it is drawn so, and then not at all
+    reset();
+    frameAt(205);
+    expect(calls.rings, 'the last frame').toBe(1);
+    frameAt(205.1);
+    frameAt(205.2);
+    expect(calls.rings, 'none alive').toBe(1);
+  });
+});

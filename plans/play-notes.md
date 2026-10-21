@@ -230,7 +230,7 @@ update`), `src/scene.ts` (`cutAway` for `housesCut`), `test/view.test.ts`,
     (`ruin` and `village` may move: `/gate-moved`, looked at), `npm run
 determinism` (chunk choice is drawn, not simulated, so it must not move).
 
-- [ ] **Part 6. The frame costs less, and a slow machine is caught sooner.**
+- [x] **Part 6. The frame costs less, and a slow machine is caught sooner.**
       Measure first, change second, measure last. Files: `src/scene.ts`,
       `src/view.ts` (`RUNG_STEPS`, `RUNG`, `FrameRung`), `src/main.ts`
       (`toRung`, pixel ratio), `scripts/`/`smoke/` where a figure is read,

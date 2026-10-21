@@ -408,6 +408,10 @@ export class Scene {
   private marksWritten = 0;
   private marksNext = 0;
   private marksTinted = -Infinity;
+  /** Whether marks have been written to the matrices that the renderer has not been handed yet: handed at most every `MARK.every`. */
+  private marksUnsent = false;
+  /** Whether a ring was alive in the last frame's matrices: a ring's last frame, drawn spent, is still handed over. */
+  private ringsLive = false;
   /** The near picture of the ground's colour, kept so a track can take the colour of the ground it is laid on. */
   private texels: Uint8ClampedArray | null = null;
   private texSide = 0;
@@ -1101,11 +1105,13 @@ export class Scene {
         this.ringSize[k] = 0.5 + 0.5 * Math.min(1, speed / WADE.fast);
       }
     const m = this.rings.matrices;
+    let live = false;
     for (let k = 0; k < WADE.rings; k++) {
       const age = (now - this.ringBorn[k]) / WADE.life;
       const o = k * 16;
       // spread out and thinned away as it ages; nought before it is born, or once it is spent, or if time ran back
       const s = age >= 0 && age < 1 ? (0.6 + WADE.spread * age) * this.ringSize[k] : 0;
+      if (s > 0) live = true;
       m[o] = s;
       m[o + 5] = s;
       m[o + 10] = 1;
@@ -1114,7 +1120,10 @@ export class Scene {
       m[o + 14] = this.ringAt[k * 3 + 2];
       m[o + 15] = 1;
     }
-    this.draws.move(this.base.contact + 1, m);
+    // handed over only while one is alive, and once more after the last has gone, so it is drawn spent; a frame of none
+    // writes the same nought as the last
+    if (live || this.ringsLive) this.draws.move(this.base.contact + 1, m);
+    this.ringsLive = live;
   }
 
   /** The tracks: new marks written where they were laid, and every mark's colour faded by its age, now and then. */
@@ -1122,7 +1131,6 @@ export class Scene {
     const m = this.marks.matrices,
       colours = this.marks.materials!;
     // the marks laid since the last frame, from where the writing stopped round to where the tracks have got to
-    let laid = false;
     if (tracks.next !== this.marksNext || tracks.count !== this.marksWritten) {
       let i = this.marksNext;
       const end = tracks.next;
@@ -1147,15 +1155,23 @@ export class Scene {
       } while (i !== end && n < TRACKS_ROOM);
       this.marksNext = tracks.next;
       this.marksWritten = tracks.count;
-      this.draws.move(this.base.tracks, m, tracks.count);
-      laid = true;
+      this.marksUnsent = true;
     }
-    // the colours, written when a mark has been laid since they last were or the fade has moved on, but not oftener
-    // than `every`; and at once if game time ran back (a test's new game)
-    const since = now - this.marksTinted;
-    if (tracks.count === 0 || (since < MARK.every && since >= 0) || (!laid && since < MARK.every * 5 && since >= 0))
+    // no marks: the count of nought is handed over at once, for a new game's
+    if (tracks.count === 0) {
+      if (this.marksUnsent) this.draws.move(this.base.tracks, m, 0);
+      this.marksUnsent = false;
       return;
+    }
+    // the marks and the colours handed over together, when a mark has been laid since they last were or the fade has
+    // moved on, but not oftener than `every`: a buffer of two thousand marks written each time one is laid was most of
+    // the driven frame's upload; and at once if game time ran back (a test's new game)
+    const since = now - this.marksTinted;
+    const due = since < 0 || since >= MARK.every;
+    if (!due || !(this.marksUnsent || since < 0 || since >= MARK.every * 5)) return;
     this.marksTinted = now;
+    if (this.marksUnsent) this.draws.move(this.base.tracks, m, tracks.count);
+    this.marksUnsent = false;
     for (let i = 0; i < tracks.count; i++) {
       const age = Math.min(1, Math.max(0, now - tracks.born[i]) / MARK.fade);
       const shade = MARK.dark + (1 - MARK.dark) * age;

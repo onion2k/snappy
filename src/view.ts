@@ -300,27 +300,32 @@ export const NEAR_BUILT = 0.35;
 export const LOOM = 0.4;
 
 /**
- * The frame-time rungs a slower machine steps down, one at a time, while its frames run long (review 1, 21): first the
- * viewfinder's depth of field (photo review, 9: the dearest thing in the viewfinder, and nothing outside it), then the
- * far trees drawn out to fewer chunks, then the grass thinned, then the far trees' ring cut to the ring drawn whole and
- * the contact shade and the antialiasing given up. Each rung says what it draws: how many chunks out the far trees go,
- * how dense the grass is, whether the occlusion and the antialiasing are kept, and whether the viewfinder blurs.
+ * The frame-time rungs a slower machine steps down, one at a time, while its frames run long, the cheapest to give up
+ * first (play notes, part 6; measured, headless, at 1280 by 800): the viewfinder's depth of field, which nothing outside
+ * the viewfinder pays for, and the pixels past one a pixel, a share of every pass a driver pays for; then the far trees
+ * drawn out to fewer chunks; then the grass thinned; then the contact shade and the antialiasing given up; and last the
+ * far trees cut to the ring drawn whole and the grass thinned again. Each rung says what it draws: how many chunks out
+ * the far trees go, how dense the grass is, whether the occlusion and the antialiasing are kept, whether the viewfinder
+ * blurs, and the most device pixels a CSS pixel is drawn with.
  */
 export const RUNG_STEPS = [
-  { trees: RINGS.trees, grass: 1, finish: true, focus: true },
-  { trees: RINGS.trees, grass: 1, finish: true, focus: false },
-  { trees: 4, grass: 1, finish: true, focus: false },
-  { trees: 4, grass: 0.6, finish: true, focus: false },
-  { trees: RINGS.kit, grass: 0.45, finish: false, focus: false },
+  { trees: RINGS.trees, grass: 1, finish: true, focus: true, pixel: 1.5 },
+  { trees: RINGS.trees, grass: 1, finish: true, focus: false, pixel: 1 },
+  { trees: 4, grass: 1, finish: true, focus: false, pixel: 1 },
+  { trees: 4, grass: 0.6, finish: true, focus: false, pixel: 1 },
+  { trees: 4, grass: 0.6, finish: false, focus: false, pixel: 1 },
+  { trees: RINGS.kit, grass: 0.45, finish: false, focus: false, pixel: 1 },
 ] as const;
 
 /**
  * When to step down: when the frames, smoothed over about `window` seconds, take longer than `slow` seconds for
  * `hold` seconds on end; and never twice within `hold`, so a rung's own relief is seen before the next is taken. A
- * frame longer than `ignore` (a tab in the background, a boot's compile) is not counted. There is no stepping back up:
- * a machine slow once is slow again, and a rung that comes and goes is seen to flicker.
+ * frame longer than `ignore` (a tab in the background, a boot's compile) is not counted. Frames within `capped` (a
+ * share of it either way) of `cap`, a thirtieth of a second, are a display or a browser held at 30 Hz, however quick
+ * the game is, and are not slow: a rung gives nothing back there. There is no stepping back up: a machine slow once is
+ * slow again, and a rung that comes and goes is seen to flicker.
  */
-export const RUNG = { slow: 1 / 45, hold: 2, window: 0.5, ignore: 0.25 } as const;
+export const RUNG = { slow: 1 / 45, hold: 1.5, window: 0.25, ignore: 0.25, cap: 1 / 30, capped: 0.1 } as const;
 
 /**
  * The seconds the rung is handed for a frame: as long as the frame took, from nought, and not clamped to the step the
@@ -342,7 +347,8 @@ export class FrameRung {
   step(dt: number): boolean {
     if (!(dt > 0) || dt > RUNG.ignore) return false;
     this.smoothed += (dt - this.smoothed) * Math.min(1, dt / RUNG.window);
-    this.slowFor = this.smoothed > RUNG.slow ? this.slowFor + dt : 0;
+    const capped = Math.abs(this.smoothed - RUNG.cap) <= RUNG.cap * RUNG.capped;
+    this.slowFor = this.smoothed > RUNG.slow && !capped ? this.slowFor + dt : 0;
     if (this.slowFor < RUNG.hold || this.rung >= RUNG_STEPS.length - 1) return false;
     this.rung++;
     this.slowFor = 0;

@@ -1,6 +1,6 @@
 {
-  "bootMs": 1260,
-  "frameMs": 4.17,
-  "bundleBytes": 201211,
-  "drivenWorstMs": 3.8
+  "bootMs": 1251,
+  "frameMs": 4.16,
+  "bundleBytes": 201377,
+  "drivenWorstMs": 3.9
 }

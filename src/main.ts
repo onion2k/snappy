@@ -339,8 +339,10 @@ async function main() {
 
   let width = 1,
     height = 1;
+  /** The most device pixels a CSS pixel is drawn with: the rung's (`RUNG_STEPS`), a quarter fewer pixels at the first rung down. */
+  let pixelCap: number = RUNG_STEPS[0].pixel;
   const resize = () => {
-    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    const dpr = Math.min(devicePixelRatio || 1, pixelCap);
     width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     canvas.width = width;
@@ -352,14 +354,15 @@ async function main() {
     if (!mode.open) game.viewfinder.aspect = cam.aspect;
     renderer.resize(width, height);
   };
-  addEventListener('resize', () => {
+  const relayout = () => {
     // with the album open, its window and the view over it laid again, and the page drawn at its new shape
     if (mode.open) {
       albumView.lay(stage, mode.pages.oddity >= 0, albumShot.aspect);
       resize();
       drawPage();
     } else resize();
-  });
+  };
+  addEventListener('resize', relayout);
   resize();
 
   /** Whether a frame is being measured: the frame loop stands still while one is. */
@@ -407,6 +410,11 @@ async function main() {
     renderer.economy.occlusion = step.finish;
     if (!step.finish) renderer.economy.antialias = 'fxaa';
     lensBlur = step.focus;
+    // the canvas drawn again at the rung's pixel ratio, as a resize does
+    if (step.pixel !== pixelCap) {
+      pixelCap = step.pixel;
+      relayout();
+    }
   };
   const asked = query.get('rung');
   if (asked !== null) {

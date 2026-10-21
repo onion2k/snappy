@@ -3,8 +3,12 @@
  * for, a number of times, and the least taken. The samples are spaced by a
  * timeout, not an animation frame, since a hidden tab gets none. Whatever
  * else the machine is doing only ever adds time, so the least is the frame's
- * own cost: over forty pages just booted it read 0.171 to 0.178 ms, where
- * the lower quartile, which this used to take, read 0.173 to 0.219.
+ * own cost: over forty pages just booted, in the template's day when a frame
+ * cost 0.17 ms, it read 0.171 to 0.178 ms, where the lower quartile, which
+ * this used to take, read 0.173 to 0.219. The toon frame is about 4 ms now,
+ * and the least of a few runs on a quiet machine still lies within a few
+ * hundredths of it (2026-10-21: 4.13 to 4.17 ms at the start), so the
+ * reasoning stands and its figures are what the template's were.
  *
  * A GPU runs as fast as it is kept busy. One that has sat idle, as it does
  * while the page boots, runs slow for a while; and one handed a frame at a

@@ -285,9 +285,28 @@ describe('the frame-time rungs', () => {
 
   it('steps down one rung once the frames have run slow for the hold, and not before', () => {
     const r = new FrameRung();
-    expect(run(r, 1 / 30, RUNG.hold * 0.8)).toBe(0);
-    expect(run(r, 1 / 30, RUNG.hold)).toBe(1);
+    expect(run(r, 1 / 25, RUNG.hold * 0.8)).toBe(0);
+    expect(run(r, 1 / 25, RUNG.hold)).toBe(1);
     expect(r.rung).toBe(1);
+  });
+
+  it('steps down for frames of 25 ms held for two seconds, and for frames of 45 ms', () => {
+    expect(run(new FrameRung(), 0.025, 2)).toBe(1);
+    expect(run(new FrameRung(), 0.045, 2)).toBe(1);
+  });
+
+  it('does not take a display held at thirty hertz for a slow machine', () => {
+    // a browser or a screen capped at 30 Hz gives frames of a steady 33.3 ms however quick the game is
+    const r = new FrameRung();
+    expect(run(r, 1 / 30, 5)).toBe(0);
+    expect(r.rung).toBe(0);
+    // within a tenth of it either way is the same cap, with the wobble of a real one
+    const wobble = new FrameRung();
+    for (let k = 0; k < 150; k++) wobble.step(k % 2 ? 0.031 : 0.036);
+    expect(wobble.rung).toBe(0);
+    // but a machine that is slower than a cap, or only a little quicker than one, is slow
+    expect(run(new FrameRung(), 0.04, 5)).toBeGreaterThan(0);
+    expect(run(new FrameRung(), 0.027, 5)).toBeGreaterThan(0);
   });
 
   it('steps down no further than the last rung, and never back up', () => {
@@ -318,18 +337,40 @@ describe('the frame-time rungs', () => {
     for (let k = 1; k < RUNG_STEPS.length; k++) {
       const a = RUNG_STEPS[k - 1],
         b = RUNG_STEPS[k];
-      expect(b.trees <= a.trees && b.grass <= a.grass && (a.finish || !b.finish) && (a.focus || !b.focus)).toBe(true);
-      expect(b.trees < a.trees || b.grass < a.grass || b.finish !== a.finish || b.focus !== a.focus).toBe(true);
+      expect(
+        b.trees <= a.trees &&
+          b.grass <= a.grass &&
+          b.pixel <= a.pixel &&
+          (a.finish || !b.finish) &&
+          (a.focus || !b.focus),
+      ).toBe(true);
+      expect(
+        b.trees < a.trees || b.grass < a.grass || b.pixel < a.pixel || b.finish !== a.finish || b.focus !== a.focus,
+      ).toBe(true);
     }
     expect(RUNG_STEPS[0].trees).toBe(RINGS.trees);
   });
 
-  it('drops the viewfinder’s blur first, at the first rung down, and never has it back', () => {
+  it('is the table, rung by rung: what helps a driver first, and the world’s own look last', () => {
+    expect(RUNG_STEPS.map(({ trees, grass, finish, focus, pixel }) => [trees, grass, finish, focus, pixel])).toEqual([
+      [RINGS.trees, 1, true, true, 1.5],
+      [RINGS.trees, 1, true, false, 1],
+      [4, 1, true, false, 1],
+      [4, 0.6, true, false, 1],
+      [4, 0.6, false, false, 1],
+      [RINGS.kit, 0.45, false, false, 1],
+    ]);
+  });
+
+  it('drops the viewfinder’s blur and the pixels past one a pixel first, and never has them back', () => {
     expect(RUNG_STEPS[0].focus).toBe(true);
     expect(RUNG_STEPS.slice(1).every((s) => !s.focus)).toBe(true);
-    // the first rung down gives up nothing else of the world's: the blur is the dearest thing in the viewfinder
+    expect(RUNG_STEPS[0].pixel).toBe(1.5);
+    expect(RUNG_STEPS.slice(1).every((s) => s.pixel === 1)).toBe(true);
+    // the first rung down gives up nothing else of the world's: it is a cheaper picture of the same world
     expect(RUNG_STEPS[1].trees).toBe(RUNG_STEPS[0].trees);
     expect(RUNG_STEPS[1].grass).toBe(RUNG_STEPS[0].grass);
+    expect(RUNG_STEPS[1].finish).toBe(RUNG_STEPS[0].finish);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it steps', () => {

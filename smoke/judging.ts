@@ -17,10 +17,13 @@ export interface Figures {
  * change: a share, and a slack for a figure too small to share.
  *
  * The frame read 0.171 to 0.178 ms over forty pages just booted, 4% highest
- * over lowest, on an M4 Pro with other sessions at work on it: 15% is
- * between three and four times that, and its slack is a hundredth of a
- * millisecond. The 0.6 ms it had was three times the frame, and let one
- * through at half its baseline and at three times it.
+ * over lowest, on an M4 Pro with other sessions at work on it, when the
+ * frame was the template's 0.17 ms: 15% is between three and four times that,
+ * and its slack is a hundredth of a millisecond. The 0.6 ms it had was three
+ * times the frame, and let one through at half its baseline and at three
+ * times it. The toon frame is about 4 ms now and wobbles less, 4.13 to 4.17
+ * ms over three runs on a quiet machine (2026-10-21), but a GPU in another
+ * clock state read twice that for a run in a few: so the same share holds.
  *
  * The download is held to the byte. The build gives the same bytes every
  * time, so there is no wobble to allow for, and with a tenth allowed three

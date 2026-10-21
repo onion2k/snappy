@@ -26,6 +26,7 @@
     "look": "playwright test smoke/look.spec.ts",
     "look:update": "playwright test smoke/look.spec.ts --update-snapshots",
     "shots": "SHOTS=1 playwright test smoke/shots.spec.ts",
+    "cost": "COST=1 playwright test smoke/cost.spec.ts",
     "perf": "playwright test smoke/perf.spec.ts",
     "perf:update": "PERF_UPDATE=1 playwright test smoke/perf.spec.ts",
     "check:quick": "prettier --check . --log-level warn && npm run --silent typecheck && eslint . && vitest run --reporter dot",
