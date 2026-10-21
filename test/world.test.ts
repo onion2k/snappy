@@ -104,15 +104,6 @@ describe('criterion 1: the world is made from content, the same every time', () 
     expect(worldHash(copy)).not.toBe(worldHash(map));
   });
 
-  // a time says nothing of the code under the mutation gate, where every file runs instrumented many times slower
-  it.skipIf(process.env.STRYKER_MUTATOR_WORKER !== undefined)('is made in under 400 ms', () => {
-    // the best of three, so a busy machine is not read as a slow world
-    let best = stats.ms;
-    for (let i = 0; i < 2; i++) best = Math.min(best, generate().stats.ms);
-    console.log(`buildWorld: ${best.toFixed(0)} ms`);
-    expect(best).toBeLessThan(400);
-  });
-
   it('is 320 tiles of 6 units a side, centred on the origin', () => {
     expect(map.grid).toEqual({ cols: 320, rows: 320, originX: -960, originY: -960, tile: 6 });
     expect(ORIGIN_X + (COLS * TILE) / 2).toBe(0);

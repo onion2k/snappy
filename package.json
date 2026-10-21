@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "vitest run && npm run --silent test:timing",
+    "test:timing": "vitest run --config vitest.timing.config.ts",
     "mutate": "stryker run && npm run --silent mutate:judge",
     "mutate:judge": "esbuild scripts/mutation-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/scripts/mutation.mjs --log-level=warning && node node_modules/.cache/scripts/mutation.mjs",
     "mutate:update": "esbuild scripts/mutation-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/scripts/mutation.mjs --log-level=warning && node node_modules/.cache/scripts/mutation.mjs --update",
@@ -29,7 +30,7 @@
     "cost": "COST=1 playwright test smoke/cost.spec.ts",
     "perf": "playwright test smoke/perf.spec.ts",
     "perf:update": "PERF_UPDATE=1 playwright test smoke/perf.spec.ts",
-    "check:quick": "prettier --check . --log-level warn && npm run --silent typecheck && eslint . && vitest run --reporter dot",
+    "check:quick": "prettier --check . --log-level warn && npm run --silent typecheck && eslint . && vitest run --reporter dot && npm run --silent test:timing",
     "check": "npm run --silent check:quick && npm run --silent fuzz && npm run --silent determinism && npm run --silent leaks:check && npm run --silent pace:check && npm run --silent mutate && npm run --silent smoke",
     "prepare": "git config core.hooksPath .githooks"
   },

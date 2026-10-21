@@ -1,15 +1,18 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // test/timing/ is run by itself afterwards (vitest.timing.config.ts), so its figures are not read beside other files' workers.
     include: ['test/**/*.test.ts'],
     // Under the mutation gate, the tests that play the whole real world (the fuzzer's, determinism's, the pace
     // gate's, the leak run's and the world's own) are left out: they hold the scripts and the world's generator, which are not
     // mutated, and every mutant of the rover or the camera reran them for seconds each, two hours a run
     // (2026-10-20). The mutated files are judged by their own tests on the fixture world. The scene's tests, which build
     // the whole world's scene, are left out for the same reason: view.ts's mutants are judged by view.test.ts.
-    exclude:
-      process.env.STRYKER_MUTATOR_WORKER === undefined
+    exclude: [
+      ...configDefaults.exclude,
+      'test/timing/**',
+      ...(process.env.STRYKER_MUTATOR_WORKER === undefined
         ? []
         : [
             'test/fuzz.test.ts',
@@ -20,7 +23,8 @@ export default defineConfig({
             'test/world-graph.test.ts',
             'test/world-parts.test.ts',
             'test/scene.test.ts',
-          ],
+          ]),
+    ],
     environment: 'node',
     // A test is timed out only so that one which never ends is caught: how fast the game steps is held by no gate
     // yet, and not by this. Vitest's own five seconds failed tests at random in three games copied from here, each a test
