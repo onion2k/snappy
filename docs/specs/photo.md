@@ -28,6 +28,9 @@ added to artshape-render's game path, released as v0.47.0 and pinned here.
   is under the middle. A click or tap without a drag sets the focus on what is under it and holds it (manual); A,
   or the AF button, goes back to auto. What is out of focus is blurred by its distance from the focus (the
   depth-of-field pass), and a small focus mark shows where it is.
+  The blur is drawn at three times the thin lens's strength (`LENS.look`), chosen from a sheet on 2026-10-21 because a
+  few pixels of blur read as none in a flat-shaded picture; the grade keeps the honest lens, so stars do not change.
+  The HUD shows the focus distance in metres beside the focal length.
 - **Highlights:** every oddity in the frame and seen (not hidden behind the ground, rock or something built) gets
   corner brackets and its name, brighter when it is in focus. Nothing else is bracketed.
 - **The shutter:** Space, a click on the shutter button, or a tap on it: a flash, then a card with the grade (out of

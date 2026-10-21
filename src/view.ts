@@ -302,6 +302,15 @@ export const RUNG_STEPS = [
  */
 export const RUNG = { slow: 1 / 45, hold: 2, window: 0.5, ignore: 0.25 } as const;
 
+/**
+ * The seconds the rung is handed for a frame: as long as the frame took, from nought, and not clamped to the step the
+ * game is simulated by, which would turn a long frame (a tab in the background, a compile) into a slow one that
+ * `RUNG.ignore` never got to ignore.
+ */
+export function rungDt(seconds: number): number {
+  return seconds > 0 ? seconds : 0;
+}
+
 /** The rung the page draws at, from how long its frames take. Makes nothing. */
 export class FrameRung {
   /** Which of `RUNG_STEPS` is drawn now. */

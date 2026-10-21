@@ -50,8 +50,8 @@ export class ViewfinderHud {
   private readonly names: HTMLElement[] = [];
   /** Each bracket as last written: left, top, width, height in pixels, in focus, which oddity; -1 hidden. */
   private readonly written = new Int32Array(BRACKETS.most * 6).fill(-1);
-  /** The focus mark as last written: x, y in pixels, in focus; the mode (1 manual) and the lens in whole mm. */
-  private readonly markWritten = new Int32Array(5).fill(-1);
+  /** The focus mark as last written: x, y in pixels, in focus; the mode (1 manual), the lens in whole mm and the focus in tenths of a metre. */
+  private readonly markWritten = new Int32Array(6).fill(-1);
   /** What the focus was last on, and how (1 manual): a change to something is a lock, and the mark pulses. */
   private readonly locked = new Int32Array([-1, 0]);
   private cardTimer = 0;
@@ -183,7 +183,10 @@ export class ViewfinderHud {
       }
     }
     const mm = Math.round(vf.focal);
-    if (m[4] !== mm) this.lens.textContent = `${mm} mm`;
+    // a unit is a tenth of a metre, so the focus's whole units are the text's tenths
+    const tenths = Math.round(vf.shot.focus);
+    if (m[4] !== mm || m[5] !== tenths) this.lens.textContent = `${mm} mm · ${(tenths / 10).toFixed(1)} m`;
+    m[5] = tenths;
     m[0] = mx;
     m[1] = my;
     m[2] = onSharp;

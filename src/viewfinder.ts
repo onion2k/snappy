@@ -23,8 +23,13 @@ import type { Ground } from './world/types';
 
 const DEG = Math.PI / 180;
 
-/** The lens: its focal lengths in mm, the sensor's height in mm, and its fixed aperture as an f-number. */
-export const LENS = { least: 24, most: 135, start: 50, sensor: 24, aperture: 2.8 } as const;
+/**
+ * The lens: its focal lengths in mm, the sensor's height in mm, its fixed aperture as an f-number, and `look`, how many
+ * times the thin lens's blur the toon frame draws. A few pixels of blur read as none in a flat-shaded picture, so the
+ * picture is blurred three times as much as the lens would, while the grade keeps the honest lens and the stars do not
+ * move.
+ */
+export const LENS = { least: 24, most: 135, start: 50, sensor: 24, aperture: 2.8, look: 3 } as const;
 
 /** How far the look turns either way of the rover's heading, and tilts down and up, in radians. */
 export const LOOK = { turn: Math.PI, down: 50 * DEG, up: 60 * DEG } as const;

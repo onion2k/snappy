@@ -131,6 +131,7 @@ export function blurOf(focal: number, aperture: number, focus: number, distance:
  *    The pass's band is the same depth either way and the lens's is not (a little more lies sharp behind the focus
  *    than in front of it), so the nearer side's is taken both ways: nothing the grade calls blurred is drawn sharp.
  *
+ * The strength is drawn `LENS.look` times the lens's, for the toon frame's sake; the band and the grade are the lens's.
  * A focus no further off than the focal length, which no lens here can be set to, is no blur at all.
  */
 export function depthOfField(focal: number, aperture: number, focus: number, reach: number, out: Float64Array): void {
@@ -142,7 +143,7 @@ export function depthOfField(focal: number, aperture: number, focus: number, rea
   const k = (focal / aperture) * (focal / (s1 - focal));
   const share = GRADE.focus.sharp / k;
   out[0] = (2 * focus * share) / (1 + share);
-  out[1] = k / 2 / LENS.sensor / reach;
+  out[1] = (LENS.look * k) / 2 / LENS.sensor / reach;
 }
 
 /**

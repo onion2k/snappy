@@ -1,6 +1,6 @@
 # Play notes, 2026-10-21: six fixes, six commits
 
-State: building, part 3 of 6.
+State: building, part 4 of 6.
 
 Copied to `plans/play-notes.md` in the repo as the first act of building, and
 ticked there (the kit's `checks/plans.md`). Built on `sonnet` or by the
@@ -145,7 +145,7 @@ Report each part with its figures before and after.
     the per-placement card cut in artshape-render, tree uvs and a noise
     image) and an x-ray circle (a new masked pass). Both are that repo's.
 
-- [ ] **Part 2. The depth of field can be seen.**
+- [x] **Part 2. The depth of field can be seen.**
       Files: `src/score.ts` (`depthOfField`, 136-146), `src/main.ts`, `src/hud.ts`,
       `src/view.ts`, `test/score.test.ts`, `test/view.test.ts`,
       `docs/specs/photo.md` (note the choice).

@@ -705,7 +705,7 @@ describe('the depth of field the blur is drawn with', () => {
       [24, 30],
     ]) {
       depthOfField(focal, LENS.aperture, focus, REACH, out);
-      const strength = out[1];
+      const strength = out[1] / LENS.look;
       // the pass's radius, strength times the share off the focus, against the grade's circle's radius as a share of
       // the sensor's height: the same, short of the band, which takes a hair off near the focus
       for (const d of [focus * 1.5, focus * 3, focus * 0.7]) {
@@ -714,6 +714,23 @@ describe('the depth of field the blur is drawn with', () => {
         if (pass < REACH) expect(pass / lens, `${focal} mm at ${d}`).toBeCloseTo(1, 9);
       }
     }
+  });
+
+  it('draws the blur `look` times the thin lens’s strength, and the band and distance as they were', () => {
+    // the strength before the look factor, from the thin lens's own sum: its circle's factor, halved to a radius, over
+    // the sensor's height and the pass's reach
+    const k = (50 / LENS.aperture) * (50 / (10 * 100 - 50));
+    const honest = k / 2 / LENS.sensor / REACH;
+    expect(LENS.look).toBe(3);
+    depthOfField(50, LENS.aperture, 10, REACH, out);
+    expect(out[1]).toBeCloseTo(3 * honest, 12);
+    const share = GRADE.focus.sharp / k;
+    expect(out[0]).toBeCloseTo((2 * 10 * share) / (1 + share), 12);
+    const shot = new Shot();
+    shot.focus = 10;
+    const blur = new Float64Array(3);
+    shotBlur(shot, new Float64Array(2), REACH, blur);
+    expect(blur[2]).toBe(10);
   });
 
   it('keeps sharp what the grade calls sharp: the band reaches to where the circle is the sharp one', () => {

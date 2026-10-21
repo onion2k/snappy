@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ChunkView,
   FrameRung,
+  rungDt,
   GROUND,
   KIT,
   RINGS,
@@ -251,6 +252,15 @@ describe('the frame-time rungs', () => {
     const r = new FrameRung();
     run(r, 1, 30);
     for (let k = 0; k < 600; k++) r.step(0);
+    expect(r.rung).toBe(0);
+  });
+
+  it('is handed the frame as it took, not as the game was stepped: a long frame passes through to be ignored', () => {
+    expect(rungDt(0.3)).toBe(0.3);
+    expect(rungDt(1 / 60)).toBe(1 / 60);
+    expect(rungDt(-0.5)).toBe(0);
+    const r = new FrameRung();
+    for (let k = 0; k < 600; k++) r.step(rungDt(0.3));
     expect(r.rung).toBe(0);
   });
 

@@ -39,7 +39,7 @@ import { Progress } from './progress';
 import { seeded } from './random';
 import { Scene, type Played } from './scene';
 import { shotBlur } from './score';
-import { FrameRung, RUNG_STEPS } from './view';
+import { FrameRung, RUNG_STEPS, rungDt } from './view';
 import { Shot, aimOf, fovOf } from './viewfinder';
 import { GameSound, LazySound } from './sound';
 import { mountStick } from './touch';
@@ -721,7 +721,8 @@ async function main() {
   const frame = (now: number) => {
     requestAnimationFrame(frame);
     // a frame's own timestamp can come before the moment the loop was set up, and the music refuses time that runs back
-    const dt = Math.min(Math.max((now - last) / 1000, 0), 1 / 20);
+    const raw = (now - last) / 1000,
+      dt = Math.min(Math.max(raw, 0), 1 / 20);
     last = now;
     if (measuring) return;
     // an album page is drawn when it changes, and stands while it is read
@@ -732,7 +733,7 @@ async function main() {
     }
     simulate(dt);
     draw(dt, false);
-    if (asked === null && rung.step(dt)) toRung(rung.rung);
+    if (asked === null && rung.step(rungDt(raw))) toRung(rung.rung);
   };
   ready = true;
   booted = true;
