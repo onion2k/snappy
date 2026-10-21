@@ -1,6 +1,6 @@
 # The frame's cost: FXAA and a pixel ratio of 1 as the look
 
-State: building, part 2 of 2.
+State: landed on main at a9ec295, 2026-10-21.
 
 From the user's word on 2026-10-21 that the five levers measured that day
 were all worth doing, and their choice from sheets of the three that are
