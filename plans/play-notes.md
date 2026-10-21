@@ -1,6 +1,6 @@
 # Play notes, 2026-10-21: six fixes, six commits
 
-State: building, part 2 of 6.
+State: building, part 3 of 6.
 
 Copied to `plans/play-notes.md` in the repo as the first act of building, and
 ticked there (the kit's `checks/plans.md`). Built on `sonnet` or by the
@@ -111,7 +111,7 @@ Report each part with its figures before and after.
     views may move if the mark changes: `/gate-moved` on each).
   - Out of scope: autofocus choosing by grade rather than nearest-centre.
 
-- [ ] **Part 3. A tree in the way sinks out of it over a few frames.**
+- [x] **Part 3. A tree in the way sinks out of it over a few frames.**
       Files: `src/scene.ts` (`cutAway`, 899-920; the stale comments at 112-115
       and 894), `src/models/kit.ts` (`KitBatch.resize`/`kitMatrix`), CLAUDE.md
       (0.47 → 0.48; the line on fades).

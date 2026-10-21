@@ -182,10 +182,10 @@ What to copy the shape of, when building something new:
 
 The depth of field is artshape-render's own (`Post.focus`, from 0.47.0),
 asked for only in the viewfinder, and dropped by the first rung down.
-artshape-render 0.47 has no fade or alpha per placement, no outline or rim
+artshape-render 0.48 has no fade or alpha per placement, no outline or rim
 light per group, and no shadow softness per group. So a tree cut from the
-camera's sight line is swapped for a low variant rather than faded, and its
-crown's shadow goes with it. A change for any of these goes in that repo,
+camera's sight line shrinks away over a few frames into a low variant rather than
+fading, and its crown's shadow goes with it. A change for any of these goes in that repo,
 with a version bump here.
 
 ## Rules for the code

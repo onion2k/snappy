@@ -172,9 +172,9 @@ export function kindPieces(kind: Kind): KitPiece[] {
 /**
  * How a tall thing is drawn while it is cut out of the camera's way, in its own units: a tree as a knee-high clump of
  * undergrowth `clump` tall in its own crown's colour, so a cut wood reads as a wood's floor and not as one felled (a
- * field of stumps did, review 3, 4); a building as its walls' feet `built` tall, closed with a flat cap. A cut thing is
- * swapped for this whole, and never squashed: a squashed house was a flat cake with its roof pressed onto its walls
- * (review 2, 1 and 2).
+ * field of stumps did, review 3, 4); a building as its walls' feet `built` tall, closed with a flat cap. A tree shrinks
+ * whole over a few frames while this grows in its place, and a building is swapped for this whole at the halfway;
+ * neither is ever squashed: a squashed house was a flat cake with its roof pressed onto its walls (review 2, 1 and 2).
  */
 export const LOW = { clump: 3, built: 9 } as const;
 

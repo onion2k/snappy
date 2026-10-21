@@ -102,16 +102,15 @@ const TRACKS_ROOM = TRACKS.capacity;
 /** How quickly what is cut out of the camera's way goes, and what is pressed down goes and comes back. */
 const SHRINK_RATE = 7;
 /**
- * How quickly what was cut away grows back once it is out of the way: about half a second to its halfway swap, where
- * the cut takes a tenth. The way to the rover moves for a moment as the camera rises over a lip or swings, and a wood
+ * How quickly what was cut away grows back once it is out of the way: about half a second to its halfway (a
+ * building's swap, a tree half grown), where the cut takes a tenth. The way to the rover moves for a moment as the camera rises over a lip or swings, and a wood
  * cleared for six frames grew back whole and was cut again: trees seen flickering.
  */
 const GROW_RATE = 1.2;
 
 /**
- * How low a building is cut when it stands in the camera's way, in units: its walls' feet, a little over the rover's
- * height, so the rover is still seen to be stopped by it; how flat a bush is pressed while the rover is in it; and the
- * share of a tree's trunk left standing as a stump when its crown is taken out of the way.
+ * How flat a bush is pressed while the rover is in it. A building cut out of the camera's way, and a tree, are swapped
+ * for their low variants (`LOW`, in `models/kit.ts`), and take nothing from here.
  */
 const CUT = { bush: 0.3 } as const;
 
@@ -745,20 +744,15 @@ export class Scene {
     }
   }
 
-  /** The trees refilled drawn as they were: cut ones swapped for their low variant at once, and eased on from there. */
+  /** The trees refilled drawn as they were: each cut or half sunk one at its size, and eased on from there. */
   private restoreTrees() {
     const tracked = this.treesCut;
     for (let t = 0; t < tracked.count; t++) {
       const size = this.kept[tracked.of[t]];
       if (size >= 1) continue;
       tracked.size[t] = size;
-      if (size >= 0.5) continue;
-      const p = this.map.placements[tracked.of[t]];
-      tracked.down[t] = 1;
-      this.trees.shrink[0] = 0;
-      this.trees.resize(p, tracked.at[t]);
-      this.trees.shrink[0] = 1;
-      this.treesLow.resize(p, tracked.lowAt[t]);
+      tracked.down[t] = size < 0.5 ? 1 : 0;
+      this.drawSunk(tracked, t, size, this.trees, this.treesLow);
     }
   }
 
@@ -849,7 +843,7 @@ export class Scene {
     // an album page holds nothing over from the game: what is cut is what its own eye is in, and not what the chase
     // camera had cut and the hold kept so, which was the page's picture one time and not after a reload
     const hold = away ? 0 : HOLD;
-    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, hold);
+    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, hold, true);
     this.cutAway(this.housesCut, this.built, this.builtLow, dt, hold);
     this.pressBushes(game.rover, dt, ease, away);
     this.handOver(this.trees, this.base.trees, false);
@@ -891,12 +885,17 @@ export class Scene {
 
   /**
    * Each of `tracked`, eased toward cut if the sight line says it is in the way and back if not, and swapped for its
-   * low variant (a capped stump, a house's capped walls' feet) as it passes halfway, and back again the same: so a
-   * thing that grazes the line does not flicker, and nothing is ever drawn squashed. A step of nought (a paused frame)
-   * settles it at once. `hold` is how far past the way what is cut stays cut: `HOLD`, or nought for a still that must not
-   * depend on what came before it.
+   * low variant (a tree's knee-high clump, a house's capped walls' feet) as it passes halfway, and back again the same:
+   * so a thing that grazes the line does not flicker, and nothing is ever drawn squashed. A step of nought (a paused
+   * frame) settles it at once. `hold` is how far past the way what is cut stays cut: `HOLD`, or nought for a still that
+   * must not depend on what came before it.
+   *
+   * With `sinking` (the trees) the ease is drawn, and not only the swap: the tree is drawn whole at its ease's size,
+   * about its foot, and its clump at what is left, so it sinks out of the way over a few frames and rises the same.
+   * A tree shrinking whole is not a felled wood (`LOW` says why nothing is squashed): its height is never scaled alone.
+   * A building shrunk whole would read wrong, so a building keeps the swap.
    */
-  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number, hold: number) {
+  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number, hold: number, sinking = false) {
     for (let t = 0; t < tracked.count; t++) {
       const p = this.map.placements[tracked.of[t]];
       // what is cut down stays cut until it is clearly out of the way, and what stands is cut once it is in it
@@ -908,8 +907,13 @@ export class Scene {
       if (Math.abs(now - want) < 0.02) now = want;
       tracked.size[t] = now;
       const down = now < 0.5 ? 1 : 0;
-      if (down === tracked.down[t]) continue;
+      const swapped = down !== tracked.down[t];
       tracked.down[t] = down;
+      if (sinking) {
+        this.drawSunk(tracked, t, now, batch, low);
+        continue;
+      }
+      if (!swapped) continue;
       batch.shrink[0] = down ? 0 : 1;
       batch.resize(p, tracked.at[t]);
       batch.shrink[0] = 1;
@@ -917,6 +921,17 @@ export class Scene {
       low.resize(p, tracked.lowAt[t]);
       low.shrink[0] = 1;
     }
+  }
+
+  /** The tree at `t` drawn whole at `size` of its own about its foot, and its clump at what is left of it. */
+  private drawSunk(tracked: Tracked, t: number, size: number, whole: KitBatch, low: KitBatch) {
+    const p = this.map.placements[tracked.of[t]];
+    whole.shrink[0] = size;
+    whole.resize(p, tracked.at[t]);
+    whole.shrink[0] = 1;
+    low.shrink[0] = 1 - size;
+    low.resize(p, tracked.lowAt[t]);
+    low.shrink[0] = 1;
   }
 
   /**

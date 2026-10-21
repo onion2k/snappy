@@ -10,7 +10,7 @@ import { Game } from '../src/game';
 import { Progress, memoryStore } from '../src/progress';
 import { seeded } from '../src/random';
 import { Scene, type Draws } from '../src/scene';
-import { HOLD, SightLine, tallness } from '../src/view';
+import { HOLD, RINGS, SightLine, tallness } from '../src/view';
 import { CHUNK } from '../src/world/types';
 
 // the browser's image types, which the scene makes its ground's layers with, and which the test has no use for
@@ -363,5 +363,157 @@ describe('the rover put away, for an album page', () => {
     scene.hidePlayer = false;
     standAt(bush!.x, bush!.y);
     expect(scene.cut.bushes, 'and pressed again once it is back').toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('a tree in the way sinks out of it', () => {
+  const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+  const { grid } = game.map;
+  const span = CHUNK * grid.tile;
+  /** Every group the scene handed the renderer, whose matrices it goes on writing into. */
+  let dynamic: { count?: number; matrices: Float32Array }[] = [];
+  const recording = { ...draws, setDynamic: (d: typeof dynamic) => (dynamic = d) } as unknown as Draws;
+  let scene: Scene;
+  let id = -1;
+  let at: { x: number; y: number; z: number };
+  /** Each instance at the tree's foot: its group, its place, and how long its x axis was whole and when cut. */
+  let parts: { g: number; i: number; whole: number; cut: number }[] = [];
+
+  /** How long the x axis of each instance at the tree's foot is now, by group and place. */
+  function lengths(): Map<string, number> {
+    const p = game.map.placements[id];
+    const out = new Map<string, number>();
+    dynamic.forEach((g, gi) => {
+      for (let i = 0; i < (g.count ?? 0); i++) {
+        const m = g.matrices;
+        if (Math.abs(m[i * 16 + 12] - p.x) > 0.01 || Math.abs(m[i * 16 + 13] - p.y) > 0.01) continue;
+        out.set(`${gi}:${i}`, Math.hypot(m[i * 16], m[i * 16 + 1], m[i * 16 + 2]));
+      }
+    });
+    return out;
+  }
+
+  /** The tree's full size now and its clump's, each as a share of what it is when it is drawn: read off the matrices. */
+  function scales(): { whole: number; low: number } {
+    const now = lengths();
+    let whole = 0,
+      wholeOf = 0,
+      low = 0,
+      lowOf = 0;
+    for (const [key, len] of now) {
+      const part = parts.find((q) => `${q.g}:${q.i}` === key);
+      if (!part) continue;
+      if (part.whole > part.cut) {
+        whole += len;
+        wholeOf += part.whole;
+      } else {
+        low += len;
+        lowOf += part.cut;
+      }
+    }
+    return { whole: whole / wholeOf, low: low / lowOf };
+  }
+
+  /** One frame with the camera behind the rover (the tree in the way) or over it (clear), a step of `dt`. */
+  function frame(blocked: boolean, dt: number) {
+    const eye: [number, number, number] = blocked ? eyeBehind(at.x, at.y, at.z) : [at.x, at.y, at.z + 120];
+    scene.frame(game, eye, [at.x, at.y, at.z], dt, dt === 0);
+  }
+
+  beforeAll(async () => {
+    scene = new Scene(game.map, game.ground, recording);
+    await scene.build([game.map.start.x, game.map.start.y, 0]);
+    // a place with a tree in the camera's way from behind and not from over the rover: found along the chunk borders
+    const cut = new Int32Array(4096);
+    const clear = new Int32Array(4096);
+    for (let k = 2; k < grid.cols / CHUNK - 2 && id < 0; k++) {
+      const x = grid.originX + k * span - 0.5;
+      for (let y = grid.originY + span; y < grid.originY + grid.rows * grid.tile - span; y += 6) {
+        game.rover.x = x;
+        game.rover.y = y;
+        game.rover.z = game.ground.heightAt(x, y);
+        at = { x, y, z: game.rover.z };
+        frame(true, 0);
+        const n = scene.cutTrees(cut);
+        if (!n) continue;
+        const behind = cut.slice(0, n);
+        frame(false, 0);
+        const m = scene.cutTrees(clear);
+        const over = new Set(clear.subarray(0, m));
+        const one = behind.find((t) => !over.has(t));
+        if (one === undefined) continue;
+        id = one;
+        break;
+      }
+    }
+    expect(id, 'a tree in the way from behind and not from over').toBeGreaterThanOrEqual(0);
+    frame(false, 0);
+    const whole = lengths();
+    frame(true, 0);
+    const cutDown = lengths();
+    parts = [...whole.keys()].map((key) => {
+      const [g, i] = key.split(':').map(Number);
+      return { g, i, whole: whole.get(key)!, cut: cutDown.get(key)! };
+    });
+    expect(parts.length, 'instances at the tree’s foot').toBeGreaterThan(1);
+  }, 60_000);
+
+  function reset() {
+    frame(false, 0);
+  }
+
+  it('is drawn part way, and its clump the rest, after one step with it newly in the way', () => {
+    reset();
+    frame(true, 1 / 60);
+    const s = scales();
+    expect(s.whole).toBeGreaterThan(0);
+    expect(s.whole).toBeLessThan(1);
+    expect(s.low).toBeCloseTo(1 - s.whole, 6);
+  });
+
+  it('is gone, and its clump whole, once it has been in the way for a little while', () => {
+    reset();
+    for (let f = 0; f < 36; f++) frame(true, 1 / 60);
+    const s = scales();
+    expect(s.whole).toBe(0);
+    expect(s.low).toBeCloseTo(1, 6);
+  });
+
+  it('is gone at once when the step is nought, a paused frame', () => {
+    reset();
+    frame(true, 0);
+    const s = scales();
+    expect(s.whole).toBe(0);
+    expect(s.low).toBeCloseTo(1, 6);
+  });
+
+  it('grows back over a few frames once it is out of the way, and is whole in the end', () => {
+    reset();
+    frame(true, 0);
+    frame(false, 1 / 60);
+    const s = scales();
+    expect(s.whole).toBeGreaterThan(0);
+    expect(s.whole).toBeLessThan(1);
+    expect(s.low).toBeCloseTo(1 - s.whole, 6);
+    for (let f = 0; f < 240; f++) frame(false, 1 / 60);
+    const end = scales();
+    expect(end.whole).toBeCloseTo(1, 6);
+    expect(end.low).toBeCloseTo(0, 6);
+  });
+
+  it('is put back at the size it had when the pools are filled again half way', () => {
+    reset();
+    frame(true, 0);
+    frame(false, 0);
+    frame(true, 1 / 60);
+    const before = scales();
+    expect(before.whole).toBeGreaterThan(0);
+    expect(before.whole).toBeLessThan(1);
+    // the far trees drawn out to another ring fills the pools again, and restores what was cut
+    scene.setTreesRing(RINGS.trees - 1);
+    const after = scales();
+    scene.setTreesRing(RINGS.trees);
+    expect(after.whole).toBeCloseTo(before.whole, 6);
+    expect(after.low).toBeCloseTo(before.low, 6);
   });
 });
