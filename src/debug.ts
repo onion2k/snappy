@@ -167,6 +167,8 @@ export interface GameApi {
   content(): Content;
   rover(): RoverState;
   camera(): CameraState;
+  /** How many tracked trees and buildings are cut down out of the camera's way now. */
+  cuts(): number;
   /** The ground at a point: its height, what it is made of, the water over it, and whether the rover could stand there. */
   ground(x: number, y: number): { height: number; surface: string; water: number; standable: boolean };
 
@@ -255,6 +257,7 @@ export interface DebugHost {
   frame(): number;
   look(x: number, y: number, view: { azimuth?: number; polar?: number; radius?: number }): void;
   camera(): CameraState;
+  cuts(): number;
   /** The test's controls, over the keys and the stick, or null to hand them back. */
   override(drive: { throttle: number; steer: number } | null): void;
   /** The camera put behind the rover at once, as after a teleport. */
@@ -337,6 +340,7 @@ export function createApi(host: DebugHost): GameApi {
       };
     },
     camera: () => host.camera(),
+    cuts: () => host.cuts(),
     ground(x, y) {
       const g = game.ground;
       return {

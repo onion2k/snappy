@@ -65,10 +65,12 @@ its Parts list is the live record of where the work stands.
   - **What stops it:** it climbs slopes up to 22°. A steeper bank, a ledge
     taller than 1 unit, rock, a building or deep water stops it (it slides
     along, it is not stuck).
-- **The camera** is a chase camera above and behind, tilted about 50° from
-  straight down, about 9 m back. It shows roughly 15 m of land around the rover.
+- **The camera** is a chase camera above and behind, tilted 62° from
+  straight down, 12 m back. It shows roughly 15 m of land around the rover.
   It swings slowly behind the rover's heading. The wheel or a pinch zooms from
-  4 m to 20 m.
+  4 m to 50 m. It was lowered from about 50° on 2026-10-21 so the player sees
+  the way ahead; the player's own tilt is kept while driving, and their turn
+  comes back behind the rover.
 
 ## Where it stands now
 

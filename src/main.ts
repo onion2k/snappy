@@ -675,6 +675,7 @@ async function main() {
       };
     },
     camera: cameraState,
+    cuts: () => scene.cutsDown,
     override(drive) {
       input.override = drive ? { throttle: drive.throttle, steer: drive.steer } : null;
       if (drive) manual = null;

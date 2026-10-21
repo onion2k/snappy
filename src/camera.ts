@@ -48,16 +48,17 @@ export const CHASE = {
   home: 120,
   /**
    * Its angle from straight down, in degrees, at each end of the zoom and at
-   * home, and in between by distance. At home, 49: the eye is 7.9 m up, over
-   * a broadleaf's crown (4.2 m), a conifer's (5.2) and a cottage's ridge
-   * (6), so what is near it is looked down on and not into. Near in it looks
+   * home, and in between by distance. At home, 62: the eye is 120 cos 62 degrees,
+   * some 56 units or 5.6 m, up: over a broadleaf's crown (4.2 m) and under a conifer's (5.2 m) and a cottage's
+   * ridge (6 m), so the sight-line cut and the lift over buildings do more of the work than they did at 49, and the
+   * player sees the way ahead (chosen from a sheet of 49, 56, 62 and 68 on 2026-10-21). Near in it looks
    * lower, so the rover is seen as a thing and not a plan. Right out, 79.5:
    * with the page's 40-degree lens the horizon is 10.5 degrees over the
    * middle of the screen, which leaves the top quarter of it for the sky and
    * the clouds, the backdrop's hills taking some of that. Past 80 the sky is
    * more than a quarter of the screen and the land under the rover less.
    */
-  tilt: { near: 54, home: 49, far: 79.5 },
+  tilt: { near: 67, home: 62, far: 79.5 },
   /** The steepest it goes when lifted over something, in degrees from straight down: straight down has no "up" to turn by. */
   steepest: 3,
   /**
@@ -91,8 +92,8 @@ export const CHASE = {
    * The player's own look round, by dragging the view or with Q and E. `least` and `most` are the tilt's ends, in
    * degrees from straight down: lower than 30 looks into the trees, higher than 80 is mostly sky. `keys` is how fast
    * Q and E turn it, in radians a second. It holds while the rover stands or creeps; once it has gone faster than
-   * `drive` for `wait` seconds it eases back behind the heading at `back`, so the controls, which turn the rover
-   * itself, match the view whenever it is driven.
+   * `drive` for `wait` seconds its turn eases back behind the heading at `back`, so the controls, which turn the rover
+   * itself, match the view whenever it is driven; the player's tilt is kept.
    */
   orbit: { least: 30, most: 80, keys: 1.8, drive: 5, wait: 1, back: 2 },
   /** How far above the ground, or a roof, its line and its eye keep, in units; the line's is reached `marginRun` units out. */
@@ -234,7 +235,7 @@ export class ChaseCamera {
     this.distance += (this.zoom - this.distance) * ease(CHASE.zoomEase, dt);
 
     // the player's look round: Q and E turn it; it holds while the rover stands or creeps, and once it has been driven
-    // a while it eases back behind the heading
+    // a while its turn eases back behind the heading; the tilt is the player's to keep
     const o = CHASE.orbit,
       look = this.look;
     if (this.keyTurn !== 0) {
@@ -250,7 +251,6 @@ export class ChaseCamera {
     if (look[2] > o.wait) {
       const back = ease(o.back, dt);
       look[0] -= look[0] * back;
-      look[1] -= look[1] * back;
     }
 
     // a critically damped swing toward the heading and the look round, the short way round

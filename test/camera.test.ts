@@ -47,15 +47,15 @@ function follow(cam: ChaseCamera, r: Rover, seconds: number, ground: Ground = g)
 }
 
 describe('where it stands', () => {
-  it('stands twelve metres back, tilted about forty-nine degrees from straight down, behind the rover', () => {
+  it('stands twelve metres back, tilted about sixty-two degrees from straight down, behind the rover', () => {
     const r = roverAt(28, 18, 0.7);
     const cam = new ChaseCamera();
     cam.snap(r, g);
     expect(cam.distance).toBe(CHASE.home);
     expect(CHASE.home).toBe(120);
-    expect(tiltOf(cam)).toBeCloseTo(49, 0);
-    // over the crowns of the trees near it: a conifer is 5.2 m
-    expect(cam.position[2] - g.heightAt(cam.position[0], cam.position[1])).toBeGreaterThan(64);
+    expect(tiltOf(cam)).toBeCloseTo(62, 0);
+    // over a broadleaf's crown (4.2 m) and under a conifer's (5.2 m): the eye is 120 cos 62 degrees, some 56 units, up
+    expect(cam.position[2] - g.heightAt(cam.position[0], cam.position[1])).toBeGreaterThan(50);
     const back = Math.hypot(...[0, 1, 2].map((i) => cam.position[i] - cam.target[i]));
     expect(back).toBeCloseTo(120, 0);
     // behind: the camera is the other way from the heading
@@ -430,7 +430,7 @@ describe('looking round', () => {
     cam.snap(r, g);
     cam.orbitBy(0, 10 * DEG);
     follow(cam, r, 1);
-    expect(tiltOf(cam)).toBeCloseTo(59, 0);
+    expect(tiltOf(cam)).toBeCloseTo(72, 0);
     cam.orbitBy(0, 2);
     follow(cam, r, 1);
     expect(tiltOf(cam)).toBeCloseTo(CHASE.orbit.most, 0);
@@ -442,7 +442,7 @@ describe('looking round', () => {
     expect(cam.bend).toBeCloseTo(CHASE.orbit.least * DEG - tiltAt(cam.zoom), 6);
   });
 
-  it('comes back behind the rover and to its own tilt once it has been driven a second, and not for a tap', () => {
+  it('comes back behind the rover, keeping its tilt, once it has been driven a second, and not for a tap', () => {
     const r = roverAt(3, 15.5, 0);
     const cam = new ChaseCamera();
     cam.snap(r, g);
@@ -463,9 +463,22 @@ describe('looking round', () => {
       cam.update(r, g, DT);
     }
     expect(Math.abs(cam.offset)).toBeLessThan(0.05);
-    expect(Math.abs(cam.bend)).toBeLessThan(0.01);
     expect(Math.abs(wrap(cam.azimuth - r.yaw))).toBeLessThan(0.08);
-    expect(tiltOf(cam)).toBeCloseTo((tiltAt(cam.distance) * 180) / Math.PI, 0);
+    // the turn comes back, and the player's own tilt is kept
+    expect(cam.bend).toBeCloseTo(15 * DEG, 6);
+  });
+
+  it('keeps the tilt and clears the turn after two seconds of driving', () => {
+    const r = roverAt(3, 15.5, 0);
+    const cam = new ChaseCamera();
+    cam.snap(r, g);
+    cam.orbitBy(0.3, 0.2);
+    for (let f = 0; f < 2 * 60; f++) {
+      r.step(DT, { throttle: 1, steer: 0 });
+      cam.update(r, g, DT);
+    }
+    expect(Math.abs(cam.bend - 0.2)).toBeLessThan(1e-6);
+    expect(Math.abs(cam.offset)).toBeLessThan(0.05);
   });
 
   it('turns with Q and E as long as they are held, and holds where they leave it', () => {

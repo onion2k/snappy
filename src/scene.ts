@@ -1202,6 +1202,11 @@ export class Scene {
     return n;
   }
 
+  /** How many tracked trees and buildings are drawn cut down now, out of the camera's way: for a test. */
+  get cutsDown(): number {
+    return this.treesCut.low + this.housesCut.low;
+  }
+
   /** How many buildings are cut down out of the camera's way now, and how many bushes are pressed: for a test. */
   get cut(): { houses: number; bushes: number } {
     return { houses: this.housesCut.cut, bushes: this.bushes.cut };

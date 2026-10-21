@@ -1,6 +1,6 @@
 # Play notes, 2026-10-21: six fixes, six commits
 
-State: building, part 4 of 6.
+State: building, part 5 of 6.
 
 Copied to `plans/play-notes.md` in the repo as the first act of building, and
 ticked there (the kit's `checks/plans.md`). Built on `sonnet` or by the
@@ -172,7 +172,7 @@ Report each part with its figures before and after.
     report before and after), `npm run look` with `/gate-moved` for the photo
     views that now blur more: look at each.
 
-- [ ] **Part 4. The driving camera looks further ahead.**
+- [x] **Part 4. The driving camera looks further ahead.**
       A matter of taste, shown first. Files: `src/camera.ts` (`CHASE.tilt`,
       `lead`, 250-254), `test/camera.test.ts` (50-56, 181-186, 373, 427-442,
       445-468), `docs/specs/landscape-rover.md:68-71`, `smoke/screens/*`.
