@@ -175,6 +175,12 @@ export class ViewfinderHud {
     if (m[3] !== manual) {
       this.mode.textContent = manual ? 'MF' : 'AF';
       this.mode.classList.toggle('manual', manual === 1);
+      // a tap that left auto: MF is drawn big and bright, and the page's animation brings it back over two seconds
+      this.mode.classList.remove('switched');
+      if (manual === 1 && m[3] === 0) {
+        void this.mode.offsetWidth;
+        this.mode.classList.add('switched');
+      }
     }
     const mm = Math.round(vf.focal);
     if (m[4] !== mm) this.lens.textContent = `${mm} mm`;

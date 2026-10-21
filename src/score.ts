@@ -270,7 +270,7 @@ function boxOf(shot: Shot, s: Subjects, i: number, out: Float64Array): void {
     s2 > 0 && s1 > focal ? (((focal / shot.v[5]) * Math.abs(s2 - s1)) / s2) * (focal / (s1 - focal)) : Infinity;
   out[5] = distance;
   out[6] = blur;
-  out[7] = blur <= 2 * GRADE.focus.sharp ? 1 : 0;
+  out[7] = blur <= GRADE.focus.sharp ? 1 : 0;
   if (front === 0) {
     out[0] = out[1] = out[2] = out[3] = out[4] = 0;
     return;
@@ -451,7 +451,7 @@ export const CRITIQUE = {
   square: 'Off the middle: put it square in the frame.',
   facing: 'Facing away: go round to its front.',
   under: 'Seen from underneath: back off to see its side.',
-  focus: 'Out of focus: tap on it, or go back to auto.',
+  focus: 'Out of focus: go back to auto (A).',
   steady: 'Blurred by movement: hold still as you shoot.',
   light: 'Into the sun: shoot with the sun behind you.',
 } as const;

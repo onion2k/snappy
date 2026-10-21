@@ -8,7 +8,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { ready, start, watch } from './game';
-import { GAME_VIEWS, placeView } from './views';
+import { aimAt, GAME_VIEWS, placeView } from './views';
 
 /** How many frames the page draws in a second. */
 function framesInASecond(page: Page) {
@@ -242,7 +242,18 @@ test('in the viewfinder a drag turns the view, the wheel zooms the lens, a click
   for (let k = 0; k < 10; k++) await page.mouse.wheel(0, -800);
   await page.evaluate(() => window.game!.step(1));
   expect((await page.evaluate(() => window.game!.viewfinder())).focal).toBe(135);
-  // a click without a drag: focus set by hand, its mark where the click was (y up)
+  // a click on nothing but grass leaves the auto focus alone: a stray click is not a wish to focus by hand
+  await page.mouse.click(cx - view.width / 4, cy + view.height / 4);
+  expect((await page.evaluate(() => window.game!.viewfinder())).mode, 'a click on nothing').toBe('auto');
+  // a click on an oddity, without a drag: focus set by hand, its mark where the click was (y up)
+  const duck = await page.evaluate(() => window.game!.oddities().find((o) => o.name === 'mill pond duck')!);
+  // the camera lowered for the move: raised, the viewfinder's eye stays where it was
+  await page.evaluate(() => window.game!.photo(false));
+  await page.evaluate(
+    ([x, y, yaw]) => window.game!.teleport(x + Math.cos(yaw) * 40, y + Math.sin(yaw) * 40, yaw + Math.PI),
+    [duck.x, duck.y, duck.yaw],
+  );
+  await aimAt(page, 'mill pond duck', 135, -0.5, -0.5);
   await page.mouse.click(cx - view.width / 4, cy + view.height / 4);
   const tapped = await page.evaluate(() => window.game!.viewfinder());
   expect(tapped.mode).toBe('manual');
@@ -363,17 +374,38 @@ test.describe('on a phone', () => {
       at('pointerup', 2, 80, 400);
       at('pointerup', 3, 320, 400);
       const pinched = g.viewfinder();
-      // a tap, lifted where it was set down: focus by hand
+      // a tap on nothing but grass, lifted where it was set down: the auto focus is left alone
       at('pointerdown', 4, 100, 215);
       at('pointerup', 4, 100, 215);
-      return { dragged, pinched, tapped: g.viewfinder() };
+      return { dragged, pinched, stray: g.viewfinder() };
     });
     expect(after.dragged.yaw).toBeLessThan(before.yaw - 0.05);
     expect(after.dragged.mode, 'a drag is not a tap').toBe('auto');
     expect(after.pinched.focal).toBeGreaterThan(before.focal * 2);
-    expect(after.tapped.mode).toBe('manual');
-    expect(after.tapped.mark[0]).toBeCloseTo(-0.5, 2);
-    expect(after.tapped.mark[1]).toBeCloseTo(0.5, 2);
+    expect(after.stray.mode, 'a tap on nothing').toBe('auto');
+    // a tap on an oddity: focus by hand, its mark where the finger was
+    const duck = await page.evaluate(() => window.game!.oddities().find((o) => o.name === 'mill pond duck')!);
+    // the camera lowered for the move: raised, the viewfinder's eye stays where it was
+    await page.evaluate(() => window.game!.photo(false));
+    await page.evaluate(
+      ([x, y, yaw]) => window.game!.teleport(x + Math.cos(yaw) * 40, y + Math.sin(yaw) * 40, yaw + Math.PI),
+      [duck.x, duck.y, duck.yaw],
+    );
+    await aimAt(page, 'mill pond duck', 135, -0.5, 0.5);
+    const tapped = await page.evaluate(() => {
+      const view = document.getElementById('view')!;
+      const box = view.getBoundingClientRect();
+      const x = box.left + box.width / 4,
+        y = box.top + box.height / 4;
+      for (const type of ['pointerdown', 'pointerup'])
+        view.dispatchEvent(
+          new PointerEvent(type, { pointerId: 5, pointerType: 'touch', clientX: x, clientY: y, bubbles: true }),
+        );
+      return window.game!.viewfinder();
+    });
+    expect(tapped.mode).toBe('manual');
+    expect(tapped.mark[0]).toBeCloseTo(-0.5, 2);
+    expect(tapped.mark[1]).toBeCloseTo(0.5, 2);
     expect(problems).toEqual([]);
   });
 

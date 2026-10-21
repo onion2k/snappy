@@ -481,7 +481,7 @@ describe('the brackets', () => {
     expect(box[7]).toBe(0);
   });
 
-  it('are in focus just within twice the sharp circle, and not just past it', () => {
+  it('are in focus just within the sharp circle, and not just past it', () => {
     const shot = fromEast(135, 0, 0);
     const d = shot.focus;
     // the focus that blurs it by a share of the sharp circle, found by halving
@@ -495,10 +495,10 @@ describe('the brackets', () => {
       }
       return lo;
     };
-    shot.focus = focusFor(2 * GRADE.focus.sharp * 0.999);
+    shot.focus = focusFor(GRADE.focus.sharp * 0.999);
     inView(shot, duckOnly, 0, box);
     expect(box[7]).toBe(1);
-    shot.focus = focusFor(2 * GRADE.focus.sharp * 1.001);
+    shot.focus = focusFor(GRADE.focus.sharp * 1.001);
     inView(shot, duckOnly, 0, box);
     expect(box[7]).toBe(0);
   });
@@ -593,7 +593,7 @@ describe('what let the picture down', () => {
     );
     expect(critique(weak({ facing: 0.2 }))).toBe('Facing away: go round to its front.');
     expect(critique(weak({ facing: 0.5 }, 0.4, false))).toBe(CRITIQUE.under);
-    expect(critique(weak({ focus: 0.1 }))).toBe('Out of focus: tap on it, or go back to auto.');
+    expect(critique(weak({ focus: 0.1 }))).toBe('Out of focus: go back to auto (A).');
     expect(critique(weak({ steady: 0.1 }))).toBe('Blurred by movement: hold still as you shoot.');
     expect(critique(weak({ light: 0.4 }))).toBe('Into the sun: shoot with the sun behind you.');
   });
@@ -602,7 +602,7 @@ describe('what let the picture down', () => {
     expect(critique(weak({ seen: 0.2 }))).toBe(CRITIQUE.half);
     expect(critique(weak({ seen: 0.2 }))).not.toMatch(/^hidden|not seen/i);
     // and the card's old fault: seen in full, graded nought for its focus, is out of focus
-    expect(critique(weak({ focus: 0 }))).toBe('Out of focus: tap on it, or go back to auto.');
+    expect(critique(weak({ focus: 0 }))).toBe('Out of focus: go back to auto (A).');
   });
 
   it('is a fine picture when even the weakest is nine tenths or more', () => {
@@ -628,7 +628,7 @@ describe('what let the picture down', () => {
   it('says so of real pictures: the duck out of focus, too small, half out, hidden and turned away', () => {
     const blurred = fromEast();
     blurred.focus = 10;
-    expect(critique(grade(blurred, duckOnly, g))).toBe('Out of focus: tap on it, or go back to auto.');
+    expect(critique(grade(blurred, duckOnly, g))).toBe('Out of focus: go back to auto (A).');
     expect(critique(grade(fromEast(24, 0, 0), duckOnly, g))).toBe('Too far off: zoom in, or go closer.');
     expect(critique(grade(fromEast(135, 1, 0), duckOnly, g))).toBe('Half out of frame: turn to take it all in.');
     const away = new Subjects([{ ...map.placements[0], yaw: Math.PI }]);

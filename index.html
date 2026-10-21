@@ -264,6 +264,20 @@
   #vfMode.manual {
     color: var(--sharp);
   }
+  #vfMode.switched {
+    animation: switched 2s ease-out;
+  }
+  @keyframes switched {
+    0%,
+    60% {
+      transform: scale(1.7);
+      filter: brightness(1.6);
+    }
+    100% {
+      transform: scale(1);
+      filter: brightness(1);
+    }
+  }
   #flash {
     position: fixed;
     inset: 0;

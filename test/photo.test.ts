@@ -194,7 +194,8 @@ describe('the album, filled by the shutter', () => {
   it('keeps a better picture over a worse, and says what it beat', () => {
     const { game, told } = keeping();
     atTheDuck(game);
-    // out of focus first, the focus set by hand far past the duck
+    // out of focus first, the focus set by hand far past the duck (a tap on nothing is let by on auto, so on manual)
+    game.viewfinder.mode = 'manual';
     game.viewfinder.focusAt(0, 0.99, game.ground, null);
     game.step(DT);
     const blurred = game.shutter()!.total;
@@ -206,6 +207,7 @@ describe('the album, filled by the shutter', () => {
     expect(told).toEqual([`${blurred} first ${duck} 0`, `${sharp} better ${duck} ${blurred}`]);
     expect(game.album.totalOf(duck)).toBe(sharp);
     // and the blurred one again is not kept over it
+    game.viewfinder.mode = 'manual';
     game.viewfinder.focusAt(0, 0.99, game.ground, null);
     game.step(DT);
     game.shutter();

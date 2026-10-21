@@ -350,7 +350,15 @@ export class Viewfinder {
     if (!this.active || !(Math.abs(nx) <= 1) || !(Math.abs(ny) <= 1)) return;
     this.frame.of(this.shot);
     this.frame.ray(nx, ny, this.dir);
-    this.focusAlong(g, subjects);
+    const was = this.shot.v[4],
+      wasFocused = this.focused;
+    this.focusAlong(g, subjects, true);
+    // a tap that found no oddity, on auto, would only put the focus on the grass and lose the subject: it is left
+    if (this.mode === 'auto' && this.focused < 0) {
+      this.shot.v[4] = was;
+      this.focused = wasFocused;
+      return;
+    }
     this.mark[0] = nx;
     this.mark[1] = ny;
     this.mode = 'manual';
@@ -406,11 +414,25 @@ export class Viewfinder {
     e[2] = b[2] + HEAD.height + EYE.ahead * sp + EYE.up * cp;
   }
 
-  /** The focus on what the ray in `dir` meets first, held to the lens's range. */
-  private focusAlong(g: Ground, subjects: Subjects | null): void {
+  /**
+   * The focus on what the ray in `dir` meets first, held to the lens's range. A tap (`toMiddle`) that meets an oddity
+   * is focused on its middle, as auto focus and the grade measure it, and not on the cylinder the ray stops at, a
+   * radius short of it: on a long lens at a wide aperture that gap alone grades a picture out of focus.
+   */
+  private focusAlong(g: Ground, subjects: Subjects | null, toMiddle = false): void {
     castInto(g, subjects, this.shot.eye, this.dir, FOCUS.far, this.hit);
-    this.shot.v[4] = Math.max(FOCUS.nearest, Math.min(FOCUS.far, this.hit[0]));
     this.focused = this.hit[1] >= 0 ? this.hit[1] | 0 : -1;
+    let d = this.hit[0];
+    if (toMiddle && this.focused >= 0) {
+      const m = this.middle,
+        e = this.shot.eye;
+      subjects!.middle(this.focused, m);
+      const dx = m[0] - e[0],
+        dy = m[1] - e[1],
+        dz = m[2] - e[2];
+      d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    this.shot.v[4] = Math.max(FOCUS.nearest, Math.min(FOCUS.far, d));
   }
 
   /**

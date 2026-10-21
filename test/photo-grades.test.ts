@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { CRITIQUE, critique, grade, type Grade } from '../src/score';
 import { Subjects } from '../src/sight';
 import { SUN } from '../src/sun';
-import { Shot, fovOf } from '../src/viewfinder';
+import { Shot, ViewFrame, Viewfinder, fovOf } from '../src/viewfinder';
 import { FIXTURE_DUCK, FIXTURE_GNOME, FIXTURE_WATER, fixtureAt, fixtureWorld } from '../src/world/fixture';
 import { groundOf } from '../src/world/ground';
 import type { Placement } from '../src/world/types';
@@ -75,6 +75,24 @@ const ROWS: Row[] = [
   // well made: three stars, centred or on a third, whatever it is of
   { label: 'duck, 60 mm, centred', shot: () => duckFrom(19, 60), stars: [3, 3], says: CRITIQUE.middle },
   { label: 'duck, 60 mm, on a third', shot: () => duckFrom(19, 60, 1 / 3, 1 / 3), stars: [3, 3], says: CRITIQUE.fine },
+  {
+    label: 'duck, 135 mm, focused by a tap on it',
+    shot: () => {
+      const s = duckFrom(30, 135);
+      const vf = new Viewfinder();
+      vf.enter({ x: 0, y: 0, z: 0, yaw: 0 });
+      vf.shot.eye.set(s.eye);
+      vf.shot.v.set(s.v);
+      const f = new ViewFrame();
+      f.of(vf.shot);
+      f.project(DUCK);
+      vf.focusAt(f.at[0], f.at[1], g, fixture);
+      s.focus = vf.focus;
+      return s;
+    },
+    stars: [3, 3],
+    says: CRITIQUE.middle,
+  },
   {
     label: 'duck, 135 mm far off, on a third',
     shot: () => duckFrom(50, 135, -1 / 3, 1 / 3),

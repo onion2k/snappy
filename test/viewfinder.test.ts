@@ -400,9 +400,9 @@ describe('focus by a tap', () => {
     vf.focusAt(nx, ny, g, s);
     expect(vf.mode).toBe('manual');
     expect(vf.focused).toBe(0);
-    // the duck's near side, 28.7 across the water and 4.6 under the lens
-    expect(vf.focus).toBeGreaterThan(28.5);
-    expect(vf.focus).toBeLessThan(30);
+    // the duck's middle, 30 across the water and a little under the lens
+    expect(vf.focus).toBeGreaterThan(30);
+    expect(vf.focus).toBeLessThan(31);
     const held = vf.focus;
     vf.look(0.4, 0);
     vf.update(1 / 60, g, s);
@@ -412,6 +412,47 @@ describe('focus by a tap', () => {
     vf.focusAt(0, -0.9, g, s);
     expect(vf.focused).toBe(-1);
     expect(vf.focus).toBeLessThan(held);
+  });
+
+  it('focuses a tap on the duck at the distance to its middle, as auto focus does, not at its cylinder', () => {
+    const vf = new Viewfinder();
+    const s = Subjects.of(map);
+    vf.enter(rover(duckX + 30 + EYE.mast + EYE.ahead, duckY, Math.PI, 0.8));
+    const f = new ViewFrame();
+    f.of(vf.shot);
+    const m = new Float64Array(3);
+    s.middle(0, m);
+    f.project(m);
+    vf.focusAt(f.at[0], f.at[1], g, s);
+    const e = vf.shot.eye;
+    expect(vf.mode).toBe('manual');
+    expect(vf.focused).toBe(0);
+    expect(vf.focus).toBeCloseTo(Math.hypot(m[0] - e[0], m[1] - e[1], m[2] - e[2]), 9);
+  });
+
+  it('keeps auto, and the focus where it was, for a tap on nothing', () => {
+    const vf = new Viewfinder();
+    const s = Subjects.of(map);
+    vf.enter(rover(duckX + 30 + EYE.mast + EYE.ahead, duckY, Math.PI, 0.8));
+    vf.update(1 / 60, g, s);
+    const held = vf.focus,
+      focused = vf.focused;
+    vf.focusAt(0, -0.9, g, s);
+    expect(vf.mode).toBe('auto');
+    expect(vf.focus).toBe(held);
+    expect(vf.focused).toBe(focused);
+  });
+
+  it('still focuses where a tap lands on nothing once it is on manual', () => {
+    const vf = new Viewfinder();
+    const s = Subjects.of(map);
+    vf.enter(rover(duckX + 30 + EYE.mast + EYE.ahead, duckY, Math.PI, 0.8));
+    vf.focusAt(0, -0.9, g, null);
+    expect(vf.mode).toBe('auto');
+    vf.mode = 'manual';
+    vf.focusAt(0, -0.9, g, s);
+    expect(vf.mode).toBe('manual');
+    expect(vf.focused).toBe(-1);
   });
 
   it('is let go on entering again, back on auto with nothing focused on', () => {
@@ -427,8 +468,12 @@ describe('focus by a tap', () => {
   it('takes a tap in the very corner of the screen', () => {
     const vf = new Viewfinder();
     vf.enter(rover(0, 0));
+    // on manual, a tap on nothing still focuses where it lands
+    vf.mode = 'manual';
     vf.focusAt(1, -1, g, null);
     expect(vf.mode).toBe('manual');
+    expect(vf.mark[0]).toBe(1);
+    expect(vf.mark[1]).toBe(-1);
   });
 
   it('goes back to auto, which focuses again on the next frame', () => {
@@ -703,6 +748,7 @@ describe('the focus mark, and the depth the blur is focused at', () => {
   it('is where the tap was, held there as the view turns, and back to auto goes with the next frame', () => {
     const vf = new Viewfinder();
     enterEastOfDuck(vf);
+    vf.mode = 'manual';
     vf.focusAt(0.3, -0.4, g, s);
     expect([...vf.mark]).toEqual([0.3, -0.4]);
     vf.look(0.2, 0.1);
@@ -719,6 +765,7 @@ describe('the focus mark, and the depth the blur is focused at', () => {
     const vf = new Viewfinder();
     enterEastOfDuck(vf);
     vf.look(0, -0.4);
+    vf.mode = 'manual';
     vf.focusAt(0.6, -0.5, g, s);
     const f = new ViewFrame();
     f.of(vf.shot);
