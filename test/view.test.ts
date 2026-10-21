@@ -341,18 +341,24 @@ describe('the frame-time rungs', () => {
         b.trees <= a.trees &&
           b.grass <= a.grass &&
           b.pixel <= a.pixel &&
-          (a.finish || !b.finish) &&
+          (a.occlusion || !b.occlusion) &&
           (a.focus || !b.focus),
       ).toBe(true);
       expect(
-        b.trees < a.trees || b.grass < a.grass || b.pixel < a.pixel || b.finish !== a.finish || b.focus !== a.focus,
+        b.trees < a.trees ||
+          b.grass < a.grass ||
+          b.pixel < a.pixel ||
+          b.occlusion !== a.occlusion ||
+          b.focus !== a.focus,
       ).toBe(true);
     }
     expect(RUNG_STEPS[0].trees).toBe(RINGS.trees);
   });
 
   it('is the table, rung by rung: what helps a driver first, and the world’s own look last', () => {
-    expect(RUNG_STEPS.map(({ trees, grass, finish, focus, pixel }) => [trees, grass, finish, focus, pixel])).toEqual([
+    expect(
+      RUNG_STEPS.map(({ trees, grass, occlusion, focus, pixel }) => [trees, grass, occlusion, focus, pixel]),
+    ).toEqual([
       [RINGS.trees, 1, true, true, 1.5],
       [RINGS.trees, 1, true, false, 1],
       [4, 1, true, false, 1],
@@ -370,7 +376,7 @@ describe('the frame-time rungs', () => {
     // the first rung down gives up nothing else of the world's: it is a cheaper picture of the same world
     expect(RUNG_STEPS[1].trees).toBe(RUNG_STEPS[0].trees);
     expect(RUNG_STEPS[1].grass).toBe(RUNG_STEPS[0].grass);
-    expect(RUNG_STEPS[1].finish).toBe(RUNG_STEPS[0].finish);
+    expect(RUNG_STEPS[1].occlusion).toBe(RUNG_STEPS[0].occlusion);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it steps', () => {

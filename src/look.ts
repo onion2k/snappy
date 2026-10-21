@@ -64,7 +64,9 @@ export const SKY = {
 export const SHADOW = { margin: 4, top: 330, reach: 420, fade: 0.15, softness: 1.5 } as const;
 
 /**
- * The clean toy: edges drawn at four samples a pixel, the toon bands eased
+ * The clean toy: edges smoothed by FXAA, not drawn at four samples a pixel (which cost 0.9 to 1.6 ms a frame at a pixel
+ * ratio of 1 and up to 3.1 at 1.5, a fifth to a third of the frame, for edges FXAA softens only a touch in a flat-shaded
+ * picture; measured and chosen from a sheet, 21 October 2026), the toon bands eased
  * over a narrow width so a band's edge on a curve is a clean line, the shade
  * a deep sea-green of a colour rather than a grey of it, a warm rim where a
  * thing turns from the camera, the sky's light from above with a warm bounce
@@ -76,7 +78,7 @@ export const SHADOW = { margin: 4, top: 330, reach: 420, fade: 0.15, softness: 1
  * look.
  */
 export const TOY = {
-  antialias: 'msaa',
+  antialias: 'fxaa',
   bandSoftness: 0.06,
   shadeColour: [0.3, 0.55, 0.62] as [number, number, number],
   rim: 0.25,

@@ -407,8 +407,7 @@ async function main() {
     const step = RUNG_STEPS[Math.max(0, Math.min(RUNG_STEPS.length - 1, k))];
     scene.setTreesRing(step.trees);
     renderer.economy.grass = step.grass;
-    renderer.economy.occlusion = step.finish;
-    if (!step.finish) renderer.economy.antialias = 'fxaa';
+    renderer.economy.occlusion = step.occlusion;
     lensBlur = step.focus;
     // the canvas drawn again at the rung's pixel ratio, as a resize does
     if (step.pixel !== pixelCap) {
