@@ -302,19 +302,19 @@ export const LOOM = 0.4;
 /**
  * The frame-time rungs a slower machine steps down, one at a time, while its frames run long, the cheapest to give up
  * first (play notes, part 6; measured, headless, at 1280 by 800): the viewfinder's depth of field, which nothing outside
- * the viewfinder pays for, and the pixels past one a pixel, a share of every pass a driver pays for; then the far trees
- * drawn out to fewer chunks; then the grass thinned; then the contact shade given up; and last the
- * far trees cut to the ring drawn whole and the grass thinned again. Each rung says what it draws: how many chunks out
- * the far trees go, how dense the grass is, whether the occlusion is kept (the antialiasing is the look's FXAA at every rung, which costs nothing to keep), whether the viewfinder
- * blurs, and the most device pixels a CSS pixel is drawn with.
+ * the viewfinder pays for, together with the far trees drawn out to four chunks (a blur off alone was worth nothing to
+ * a driver, so the first step takes the trees too); then the grass thinned; then the contact shade given up; and last
+ * the far trees cut to the ring drawn whole and the grass thinned again. Each rung says what it draws: how many chunks
+ * out the far trees go, how dense the grass is, whether the occlusion is kept (the antialiasing is the look's FXAA at
+ * every rung, which costs nothing to keep), and whether the viewfinder blurs. The pixel ratio is not a rung: the
+ * canvas is drawn at one always (`PIXEL_RATIO`, `src/main.ts`).
  */
 export const RUNG_STEPS = [
-  { trees: RINGS.trees, grass: 1, occlusion: true, focus: true, pixel: 1.5 },
-  { trees: RINGS.trees, grass: 1, occlusion: true, focus: false, pixel: 1 },
-  { trees: 4, grass: 1, occlusion: true, focus: false, pixel: 1 },
-  { trees: 4, grass: 0.6, occlusion: true, focus: false, pixel: 1 },
-  { trees: 4, grass: 0.6, occlusion: false, focus: false, pixel: 1 },
-  { trees: RINGS.kit, grass: 0.45, occlusion: false, focus: false, pixel: 1 },
+  { trees: RINGS.trees, grass: 1, occlusion: true, focus: true },
+  { trees: 4, grass: 1, occlusion: true, focus: false },
+  { trees: 4, grass: 0.6, occlusion: true, focus: false },
+  { trees: 4, grass: 0.6, occlusion: false, focus: false },
+  { trees: RINGS.kit, grass: 0.45, occlusion: false, focus: false },
 ] as const;
 
 /**

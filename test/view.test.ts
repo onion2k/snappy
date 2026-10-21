@@ -337,46 +337,35 @@ describe('the frame-time rungs', () => {
     for (let k = 1; k < RUNG_STEPS.length; k++) {
       const a = RUNG_STEPS[k - 1],
         b = RUNG_STEPS[k];
-      expect(
-        b.trees <= a.trees &&
-          b.grass <= a.grass &&
-          b.pixel <= a.pixel &&
-          (a.occlusion || !b.occlusion) &&
-          (a.focus || !b.focus),
-      ).toBe(true);
-      expect(
-        b.trees < a.trees ||
-          b.grass < a.grass ||
-          b.pixel < a.pixel ||
-          b.occlusion !== a.occlusion ||
-          b.focus !== a.focus,
-      ).toBe(true);
+      expect(b.trees <= a.trees && b.grass <= a.grass && (a.occlusion || !b.occlusion) && (a.focus || !b.focus)).toBe(
+        true,
+      );
+      expect(b.trees < a.trees || b.grass < a.grass || b.occlusion !== a.occlusion || b.focus !== a.focus).toBe(true);
     }
     expect(RUNG_STEPS[0].trees).toBe(RINGS.trees);
   });
 
   it('is the table, rung by rung: what helps a driver first, and the world’s own look last', () => {
-    expect(
-      RUNG_STEPS.map(({ trees, grass, occlusion, focus, pixel }) => [trees, grass, occlusion, focus, pixel]),
-    ).toEqual([
-      [RINGS.trees, 1, true, true, 1.5],
-      [RINGS.trees, 1, true, false, 1],
-      [4, 1, true, false, 1],
-      [4, 0.6, true, false, 1],
-      [4, 0.6, false, false, 1],
-      [RINGS.kit, 0.45, false, false, 1],
+    expect(RUNG_STEPS.map(({ trees, grass, occlusion, focus }) => [trees, grass, occlusion, focus])).toEqual([
+      [RINGS.trees, 1, true, true],
+      [4, 1, true, false],
+      [4, 0.6, true, false],
+      [4, 0.6, false, false],
+      [RINGS.kit, 0.45, false, false],
     ]);
   });
 
-  it('drops the viewfinder’s blur and the pixels past one a pixel first, and never has them back', () => {
+  it('drops the viewfinder’s blur and the far trees together first, and never has the blur back', () => {
     expect(RUNG_STEPS[0].focus).toBe(true);
     expect(RUNG_STEPS.slice(1).every((s) => !s.focus)).toBe(true);
-    expect(RUNG_STEPS[0].pixel).toBe(1.5);
-    expect(RUNG_STEPS.slice(1).every((s) => s.pixel === 1)).toBe(true);
-    // the first rung down gives up nothing else of the world's: it is a cheaper picture of the same world
-    expect(RUNG_STEPS[1].trees).toBe(RUNG_STEPS[0].trees);
+    // a blur off alone was worth nothing to a driver, so the first rung down takes the trees too
+    expect(RUNG_STEPS[1].trees).toBe(4);
     expect(RUNG_STEPS[1].grass).toBe(RUNG_STEPS[0].grass);
     expect(RUNG_STEPS[1].occlusion).toBe(RUNG_STEPS[0].occlusion);
+  });
+
+  it('has no pixel ratio of its own: the canvas is drawn at one ratio at every rung', () => {
+    for (const s of RUNG_STEPS) expect('pixel' in s).toBe(false);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it steps', () => {

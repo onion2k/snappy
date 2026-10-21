@@ -46,7 +46,7 @@ the left column. The budget is 8 ms.
       `'fxaa'`. Gates: perf (the frame falls; `perf:update` through
       `/gate-moved` with the figures), look (every picture moves at its edges:
       `look:update`, each looked at and said to show its scene), fuzz 1-12.
-- [ ] **Part 2. The canvas is drawn at a pixel ratio of 1.** `src/main.ts`
+- [x] **Part 2. The canvas is drawn at a pixel ratio of 1.** `src/main.ts`
       `pixelCap` starts at 1 and the `pixel` field leaves `RUNG_STEPS` (every
       rung is 1); `relayout` keeps capping `devicePixelRatio` at it. The rungs
       then read: (0) everything, (1) the viewfinder's blur off and the far trees

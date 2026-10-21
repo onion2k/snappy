@@ -339,10 +339,14 @@ async function main() {
 
   let width = 1,
     height = 1;
-  /** The most device pixels a CSS pixel is drawn with: the rung's (`RUNG_STEPS`), a quarter fewer pixels at the first rung down. */
-  let pixelCap: number = RUNG_STEPS[0].pixel;
+  /**
+   * The most device pixels a CSS pixel is drawn with, at every rung. The frame costs by the pixel, and 1.5 was 2.25
+   * times the pixels of 1 for a softness the toon look does not need: on a retina screen it drew the viewfinder at 7.9
+   * ms against the 8 ms budget, and at 1 it is 5.2 (measured and chosen 2026-10-21).
+   */
+  const PIXEL_RATIO = 1;
   const resize = () => {
-    const dpr = Math.min(devicePixelRatio || 1, pixelCap);
+    const dpr = Math.min(devicePixelRatio || 1, PIXEL_RATIO);
     width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     canvas.width = width;
@@ -409,11 +413,6 @@ async function main() {
     renderer.economy.grass = step.grass;
     renderer.economy.occlusion = step.occlusion;
     lensBlur = step.focus;
-    // the canvas drawn again at the rung's pixel ratio, as a resize does
-    if (step.pixel !== pixelCap) {
-      pixelCap = step.pixel;
-      relayout();
-    }
   };
   const asked = query.get('rung');
   if (asked !== null) {
