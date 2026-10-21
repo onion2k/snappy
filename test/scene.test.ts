@@ -11,7 +11,7 @@ import { Progress, memoryStore } from '../src/progress';
 import { seeded } from '../src/random';
 import { Scene, type Draws } from '../src/scene';
 import { HOLD, RINGS, SightLine, tallness } from '../src/view';
-import { CHUNK } from '../src/world/types';
+import { BUILT, CHUNK, SUBJECT_KINDS, type Kind } from '../src/world/types';
 
 // the browser's image types, which the scene makes its ground's layers with, and which the test has no use for
 beforeAll(() => {
@@ -516,4 +516,98 @@ describe('a tree in the way sinks out of it', () => {
     expect(after.whole).toBeCloseTo(before.whole, 6);
     expect(after.low).toBeCloseTo(before.low, 6);
   });
+});
+
+describe('a ruin’s wall in the camera’s way as the camera lifts over it and sinks again', () => {
+  const game = new Game(new Progress(memoryStore()), { random: seeded(1) });
+  let scene: Scene;
+
+  beforeAll(async () => {
+    scene = new Scene(game.map, game.ground, draws);
+    await scene.build([game.map.start.x, game.map.start.y, 0]);
+  }, 60_000);
+
+  it('is swapped for its feet at most once in five seconds, not each time the camera sinks back', () => {
+    // the eighth wall of the world, one a rover walking back and forth beyond it, the camera lifting over it and
+    // sinking again, cut and grew back four times in five seconds with the trees' slack and rate (2026-10-21)
+    const wall = game.map.placements.flatMap((p, i) => (p.kind === 'wall' ? [i] : []))[7];
+    const w = game.map.placements[wall];
+    // the rover beyond the wall and heading away, so the camera behind it looks across the wall
+    const heading = w.yaw + Math.PI / 2;
+    const cam = new ChaseCamera();
+    const stand = (away: number) => {
+      const x = w.x + Math.cos(heading) * away,
+        y = w.y + Math.sin(heading) * away;
+      game.rover.teleport(x, y, heading);
+    };
+    stand(40);
+    cam.snap(game.rover, game.ground);
+    const cut = new Int32Array(4096);
+    const isDown = () => {
+      const n = scene.cutHouses(cut);
+      for (let k = 0; k < n; k++) if (cut[k] === wall) return true;
+      return false;
+    };
+    let swaps = 0,
+      was = false,
+      everDown = false;
+    for (let f = 0; f < 300; f++) {
+      // a walk out and back, across a distance the lift is let go and taken up again over
+      stand(40 + 6 * Math.sin((f / 60) * 2));
+      cam.update(game.rover, game.ground, 1 / 60);
+      scene.frame(game, cam.position, cam.target, 1 / 60, false);
+      const now = isDown();
+      if (f > 0 && now !== was) swaps++;
+      everDown ||= now;
+      was = now;
+    }
+    expect(everDown, 'the wall was in the camera’s way at some point').toBe(true);
+    expect(swaps, 'times the wall was swapped for its feet or back').toBeLessThanOrEqual(1);
+  });
+});
+
+describe('the small scenery at the edge of the ring drawn whole', () => {
+  it('is drawn a share at a time past the edge, not the whole row of it at once', async () => {
+    const map = new Game(new Progress(memoryStore()), { random: seeded(1) }).map;
+    const game = new Game(new Progress(memoryStore()), { random: seeded(1), map });
+    const small = (k: Kind) => tallness(k) === 0 && !BUILT.has(k) && !SUBJECT_KINDS.has(k);
+    const span = CHUNK * map.grid.tile;
+    // the chunk with the most small things in it that has room for the ring past it to the east
+    const cols = Math.ceil(map.grid.cols / CHUNK),
+      rows = Math.ceil(map.grid.rows / CHUNK);
+    const per = new Map<number, string[]>();
+    for (const p of map.placements) {
+      if (!small(p.kind) || p.kind === 'willow') continue;
+      const c = Math.floor((p.y - map.grid.originY) / span) * cols + Math.floor((p.x - map.grid.originX) / span);
+      (per.get(c) ?? per.set(c, []).get(c)!).push(`${p.x.toFixed(2)},${p.y.toFixed(2)}`);
+    }
+    let best = -1,
+      most = 0;
+    for (let cy = 3; cy < rows - 3; cy++)
+      for (let cx = 3; cx < cols - 3; cx++) {
+        const n = per.get(cy * cols + cx + RINGS.kit + 1)?.length ?? 0;
+        if (n > most) [best, most] = [cy * cols + cx, n];
+      }
+    expect(most, 'a chunk of small scenery just past the ring').toBeGreaterThan(20);
+    const [tcx, tcy] = [best % cols, Math.floor(best / cols)];
+    const outer = per.get(tcy * cols + tcx + RINGS.kit + 1)!;
+
+    let dynamic: { count?: number; matrices: Float32Array }[] = [];
+    const recording = { ...draws, setDynamic: (d: typeof dynamic) => (dynamic = d) } as unknown as Draws;
+    const x = map.grid.originX + (tcx + 0.5) * span,
+      y = map.grid.originY + (tcy + 0.5) * span;
+    const scene = new Scene(map, game.ground, recording);
+    await scene.build([x, y, 0]);
+    game.rover.teleport(x, y, Math.PI / 2);
+    const cam = new ChaseCamera();
+    cam.snap(game.rover, game.ground);
+    scene.frame(game, cam.position, cam.target, 0, true);
+    const drawn = new Set<string>();
+    for (const g of dynamic)
+      for (let i = 0; i < (g.count ?? 0); i++)
+        drawn.add(`${g.matrices[i * 16 + 12].toFixed(2)},${g.matrices[i * 16 + 13].toFixed(2)}`);
+    const seen = outer.filter((k) => drawn.has(k)).length;
+    expect(seen, `of ${outer.length} in the ring past the whole one`).toBeGreaterThan(0);
+    expect(seen, `of ${outer.length} in the ring past the whole one`).toBeLessThan(outer.length);
+  }, 60_000);
 });

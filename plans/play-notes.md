@@ -1,6 +1,6 @@
 # Play notes, 2026-10-21: six fixes, six commits
 
-State: building, part 5 of 6.
+State: building, part 6 of 6.
 
 Copied to `plans/play-notes.md` in the repo as the first act of building, and
 ticked there (the kit's `checks/plans.md`). Built on `sonnet` or by the
@@ -199,7 +199,7 @@ run fuzz -- --seeds 1-12`.
     so it should not move; if it does, stop and ask). Spec line updated to
     the new angle and the real 12 m.
 
-- [ ] **Part 5. What is built stays put; chunks do not re-choose at an edge.**
+- [x] **Part 5. What is built stays put; chunks do not re-choose at an edge.**
       Files: `src/view.ts` (`HOLD`, `SightLine.blocks`, `inFront`, `ChunkView.
 update`), `src/scene.ts` (`cutAway` for `housesCut`), `test/view.test.ts`,
       `test/scene.test.ts`.

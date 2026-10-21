@@ -9,7 +9,9 @@ import {
   RINGS,
   RUNG,
   RUNG_STEPS,
+  CHUNK_SLACK,
   HOLD,
+  HOLD_BUILT,
   SightLine,
   WORK,
   frameWork,
@@ -50,8 +52,32 @@ describe('which chunks are drawn how', () => {
     const v = new ChunkView(grid);
     expect(v.update(10, 10)).toBe(true);
     expect(v.update(SIDE - 1, SIDE - 1)).toBe(false);
-    expect(v.update(SIDE + 1, 10)).toBe(true);
+    expect(v.update(SIDE * (1 + CHUNK_SLACK) + 1, 10)).toBe(true);
     expect(v.cx).toBe(1);
+  });
+
+  it('keeps its choice while the target idles within a slack of the chunk edge, and chooses again past it', () => {
+    const v = new ChunkView(grid);
+    v.update(4.5 * SIDE, 4.5 * SIDE);
+    // ten units over the edge: the choice is kept
+    expect(v.update(5 * SIDE + 10, 4.5 * SIDE)).toBe(false);
+    expect([v.cx, v.cy]).toEqual([4, 4]);
+    // sixty over: another chunk
+    expect(v.update(5 * SIDE + 60, 4.5 * SIDE)).toBe(true);
+    expect([v.cx, v.cy]).toEqual([5, 4]);
+    // and back ten units inside the old one: kept again, so an edge is not crossed once each way a frame
+    expect(v.update(5 * SIDE - 10, 4.5 * SIDE)).toBe(false);
+    expect([v.cx, v.cy]).toEqual([5, 4]);
+  });
+
+  it('counts the slack as a share of a chunk, either way along either axis', () => {
+    const v = new ChunkView(grid);
+    v.update(4.5 * SIDE, 4.5 * SIDE);
+    const slack = CHUNK_SLACK * SIDE;
+    expect(v.update(4 * SIDE - slack + 1, 4.5 * SIDE)).toBe(false);
+    expect(v.update(4.5 * SIDE, 5 * SIDE + slack - 1)).toBe(false);
+    expect(v.update(4.5 * SIDE, 4 * SIDE - slack - 1)).toBe(true);
+    expect([v.cx, v.cy]).toEqual([4, 3]);
   });
 
   it('holds a target off the world to the chunk at its edge', () => {
@@ -179,6 +205,30 @@ describe('the trees in the way', () => {
     expect(sight.inLine(tree(-45, y))).toBe(false);
     expect(sight.inFront(tree(-45, y), HOLD)).toBe(true);
     expect(sight.inFront(tree(-45, y + 40), HOLD)).toBe(false);
+  });
+
+  it('keeps a wall already cut away cut with the wider slack of what is built, where a tree’s would let it back', () => {
+    // a wall along the line, near the rover, moved aside until it is just clear of the line, and a little more than the
+    // trees' slack beyond that: the camera sinking a hair would cut it again at once
+    const wall = (y: number) => tree(-10, y, 'wall');
+    let y = 0;
+    while (sight.inLine(wall(y))) y += 0.25;
+    const clear = wall(y + HOLD + 2);
+    expect(sight.blocks(clear), 'clear of the line with no slack').toBe(false);
+    expect(sight.blocks(clear, HOLD), 'with a tree’s slack').toBe(false);
+    expect(sight.blocks(clear, HOLD_BUILT), 'with a building’s').toBe(true);
+    expect(sight.blocks(wall(y + HOLD_BUILT + 4), HOLD_BUILT), 'well clear').toBe(false);
+    expect(HOLD_BUILT).toBeGreaterThan(HOLD);
+  });
+
+  it('does not cut a wall for standing at the foot of the picture, off the line, as it does a tree', () => {
+    const wall = tree(-55, 20, 'wall');
+    expect(sight.inLine(wall)).toBe(false);
+    expect(sight.inFront(wall)).toBe(true);
+    expect(sight.blocks(wall)).toBe(false);
+    expect(sight.blocks(tree(-55, 20, 'conifer'))).toBe(true);
+    // in the line it is cut still
+    expect(sight.blocks(tree(-10, 0, 'wall'))).toBe(true);
   });
 
   it.skipIf(UNDER_MUTATION)('makes nothing as it is asked', () => {

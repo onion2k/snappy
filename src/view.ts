@@ -22,6 +22,9 @@ import { BUILT, CHUNK, type Grid, type Placement } from './world/types';
  */
 export const RINGS = { near: 1, mid: 3, kit: 2, trees: 6 } as const;
 
+/** How far past the edge of the chunk last chosen for the target may go before the choice is made again, as a share of a chunk. */
+export const CHUNK_SLACK = 0.25;
+
 /** The ground's levels of detail, by number, as `ChunkView.lod` holds them. */
 export const GROUND = { near: 0, mid: 1, far: 2 } as const;
 /** What scenery a chunk draws, as `ChunkView.kit` holds it. */
@@ -59,11 +62,21 @@ export class ChunkView {
     return Math.max(0, Math.min(n - 1, Math.floor((v - origin) / this.size)));
   }
 
-  /** Choose for a target at (x, y): true if it has crossed into another chunk, and the choice was made again. */
+  /**
+   * Choose for a target at (x, y): true if it has crossed into another chunk, and the choice was made again. Not until
+   * it is more than `CHUNK_SLACK` of a chunk outside the one last chosen for: a target idling or easing on an edge
+   * chose again every frame it crossed, each of them the most expensive frame there is. The first call chooses.
+   */
   update(x: number, y: number): boolean {
     const cx = this.chunkOf(x, this.originX, this.cols),
       cy = this.chunkOf(y, this.originY, this.rows);
     if (cx === this.cx && cy === this.cy) return false;
+    if (this.cx >= 0) {
+      const slack = CHUNK_SLACK * this.size;
+      const lx = this.originX + this.cx * this.size,
+        ly = this.originY + this.cy * this.size;
+      if (x > lx - slack && x < lx + this.size + slack && y > ly - slack && y < ly + this.size + slack) return false;
+    }
     this.cx = cx;
     this.cy = cy;
     this.choose();
@@ -175,7 +188,9 @@ export class SightLine {
    * A whole number, so it is not boxed handed in.
    */
   blocks(p: Placement, slack = 0): boolean {
-    return this.inLine(p, slack) || this.inFront(p, slack);
+    // what is built is cut by the line alone: a ruin at the foot of the picture is what the rover is seen among, and the
+    // camera already lifts over what is solid, so it was cut and grown back as the camera lifted and sank
+    return this.inLine(p, slack) || (!BUILT.has(p.kind) && this.inFront(p, slack));
   }
 
   /** Whether `p` stands in the line from the eye to what it looks at, the line widened by `slack`. */
@@ -266,6 +281,11 @@ export const CROWN = 0.32;
 export const MARGIN = 2;
 /** How much further, in units, a thing already cut away must be clear of the way before it grows back. */
 export const HOLD = 4;
+/**
+ * `HOLD` for what is built, which is wider: a tower is 30 across and a wall 36 long, so four units of slack let the
+ * camera's slow sink cut it again as soon as it had grown back.
+ */
+export const HOLD_BUILT = 16;
 /** How far toward what the camera looks at the foreground is cut away, as a share of the way. */
 export const NEAR_SHARE = 0.6;
 /**

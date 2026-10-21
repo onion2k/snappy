@@ -53,7 +53,7 @@ import {
 import { waterGroups, waterMeshes } from './models/water';
 import { ROVER, type Rover } from './rover';
 import { TRACKS, type Tracks } from './tracks';
-import { ChunkView, HOLD, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
+import { ChunkView, HOLD, HOLD_BUILT, KIT, RINGS, SightLine, WORK, frameWork, tallness } from './view';
 import {
   BIOME,
   BUILT,
@@ -107,6 +107,11 @@ const SHRINK_RATE = 7;
  * cleared for six frames grew back whole and was cut again: trees seen flickering.
  */
 const GROW_RATE = 1.2;
+/**
+ * The same for what is built, slower: a wall cut once stays cut until the line is clearly past it, so the camera's slow
+ * sink after it has lifted over a ruin cannot beat the wall's growing back into a cycle.
+ */
+const GROW_BUILT = 0.6;
 
 /**
  * How flat a bush is pressed while the rover is in it. A building cut out of the camera's way, and a tree, are swapped
@@ -254,6 +259,14 @@ function seedOf(p: Placement): number {
 const UNDERFOOT: ReadonlySet<Kind> = new Set<Kind>(['bush', 'fern', 'flowers', 'reed']);
 
 /**
+ * Whether a placement in the ring just past the one drawn whole is drawn whole all the same, a share of it chosen by its
+ * seed: the same rule for the trees and the small scenery, so a crossing does not land a whole row of bushes at once.
+ */
+function dithersIn(seed: number): boolean {
+  return hashOf(seed, 3) < THIN.edge;
+}
+
+/**
  * A placement's seed (`seedOf`) hashed with `salt` to [0, 1): the same every time, so a choice made by it does not
  * flicker.
  */
@@ -314,6 +327,8 @@ export class Scene {
   private playerAway = false;
   /** This frame's ease toward cut and toward grown back, by what is wanted: nought cut, one whole. */
   private readonly eases = new Float64Array(2);
+  /** The same for what is built: grown back at `GROW_BUILT`, not `GROW_RATE`. */
+  private readonly easesBuilt = new Float64Array(2);
 
   /**
    * The oddities, every one of them drawn wherever it is, as what is built is: they are what the player is out to find
@@ -427,6 +442,8 @@ export class Scene {
 
     // each pool's room: the most of each kind any ring of chunks drawn whole can hold, and every far tree there is
     const whole = this.mostInRing(RINGS.kit);
+    // the small scenery's pools hold the share dithered in past the ring as well
+    const small = this.mostInRing(RINGS.kit, true);
     const total = new Map<Kind, number>();
     for (const p of map.placements) total.set(p.kind, (total.get(p.kind) ?? 0) + 1);
     this.trees = new KitBatch(
@@ -439,7 +456,7 @@ export class Scene {
     );
     this.kit = new KitBatch(
       KINDS.filter((k) => !TALL.has(k) && !BUILT.has(k) && !SUBJECT_KINDS.has(k)).flatMap((k) => kindPieces(k)),
-      (k) => whole.get(k) ?? 1,
+      (k) => small.get(k) ?? 1,
     );
     const odds = map.placements.filter((p) => SUBJECT_KINDS.has(p.kind));
     this.odd = new KitBatch(
@@ -463,7 +480,7 @@ export class Scene {
     for (const k of TALL) most += whole.get(k) ?? 0;
     this.treesCut = new Tracked(most);
     let under = 0;
-    for (const k of UNDERFOOT) under += whole.get(k) ?? 0;
+    for (const k of UNDERFOOT) under += small.get(k) ?? 0;
     this.bushes = new Tracked(under);
     this.kept = new Float64Array(map.placements.length).fill(1);
     this.seeds = Int32Array.from(map.placements, seedOf);
@@ -519,25 +536,40 @@ export class Scene {
       this.marks.materials!.set([earth[0] * MARK.dark, earth[1] * MARK.dark, earth[2] * MARK.dark, ROUGH.earth], i * 4);
   }
 
-  /** The most of each kind of placement in any square of chunks `ring` each way of one. */
-  private mostInRing(ring: number): Map<Kind, number> {
+  /**
+   * The most of each kind of placement in any square of chunks `ring` each way of one. With `dithered`, and the share of
+   * the ring past it that is drawn whole all the same (`dithersIn`) counted too, which is how many the small scenery's
+   * pool may be asked to hold.
+   */
+  private mostInRing(ring: number, dithered = false): Map<Kind, number> {
     const { cols, rows } = this.view;
     const per = new Map<Kind, Int32Array>();
+    const edge = new Map<Kind, Int32Array>();
     for (let c = 0; c < cols * rows; c++)
       for (let k = this.chunkFirst[c]; k < this.chunkFirst[c + 1]; k++) {
-        const kind = this.map.placements[this.chunkOrder[k]].kind;
-        let a = per.get(kind);
-        if (!a) per.set(kind, (a = new Int32Array(cols * rows)));
+        const p = this.map.placements[this.chunkOrder[k]];
+        let a = per.get(p.kind);
+        if (!a) {
+          per.set(p.kind, (a = new Int32Array(cols * rows)));
+          edge.set(p.kind, new Int32Array(cols * rows));
+        }
         a[c]++;
+        if (dithered && dithersIn(seedOf(p))) edge.get(p.kind)![c]++;
       }
+    const sum = (a: Int32Array, cx: number, cy: number, r: number) => {
+      let n = 0;
+      for (let j = Math.max(0, cy - r); j <= Math.min(rows - 1, cy + r); j++)
+        for (let i = Math.max(0, cx - r); i <= Math.min(cols - 1, cx + r); i++) n += a[j * cols + i];
+      return n;
+    };
     const out = new Map<Kind, number>();
     for (const [kind, a] of per) {
+      const d = edge.get(kind)!;
       let best = 0;
       for (let cy = 0; cy < rows; cy++)
         for (let cx = 0; cx < cols; cx++) {
-          let n = 0;
-          for (let j = Math.max(0, cy - ring); j <= Math.min(rows - 1, cy + ring); j++)
-            for (let i = Math.max(0, cx - ring); i <= Math.min(cols - 1, cx + ring); i++) n += a[j * cols + i];
+          let n = sum(a, cx, cy, ring);
+          if (dithered) n += sum(d, cx, cy, ring + 1) - sum(d, cx, cy, ring);
           best = Math.max(best, n);
         }
       out.set(kind, best);
@@ -714,7 +746,7 @@ export class Scene {
         const ring = this.ringOf(c);
         let whole = draw === KIT.whole;
         if (tall && whole && ring === RINGS.kit && hashOf(seed, 2) < THIN.edge) whole = false;
-        else if (tall && !whole && ring === RINGS.kit + 1 && hashOf(seed, 3) < THIN.edge) whole = true;
+        else if (!whole && ring === RINGS.kit + 1 && dithersIn(seed)) whole = true;
         if (!whole) {
           if (tall) far.add(p);
         } else if (tall) {
@@ -722,7 +754,7 @@ export class Scene {
             this.treesCut.add(i, trees.lastIndex, this.treesLow.lastIndex);
             hide(this.treesLow, p, this.treesLow.lastIndex);
           } else far.add(p);
-        } else if (draw === KIT.whole && kit.add(p) && UNDERFOOT.has(p.kind)) this.bushes.add(i, kit.lastIndex);
+        } else if (kit.add(p) && UNDERFOOT.has(p.kind)) this.bushes.add(i, kit.lastIndex);
       }
     }
     this.restoreTrees();
@@ -840,11 +872,12 @@ export class Scene {
     const ease = 1 - Math.exp(-SHRINK_RATE * Math.max(0, dt));
     this.eases[0] = ease;
     this.eases[1] = 1 - Math.exp(-GROW_RATE * Math.max(0, dt));
+    this.easesBuilt[0] = ease;
+    this.easesBuilt[1] = 1 - Math.exp(-GROW_BUILT * Math.max(0, dt));
     // an album page holds nothing over from the game: what is cut is what its own eye is in, and not what the chase
     // camera had cut and the hold kept so, which was the page's picture one time and not after a reload
-    const hold = away ? 0 : HOLD;
-    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, hold, true);
-    this.cutAway(this.housesCut, this.built, this.builtLow, dt, hold);
+    this.cutAway(this.treesCut, this.trees, this.treesLow, dt, away ? 0 : HOLD, this.eases, true);
+    this.cutAway(this.housesCut, this.built, this.builtLow, dt, away ? 0 : HOLD_BUILT, this.easesBuilt);
     this.pressBushes(game.rover, dt, ease, away);
     this.handOver(this.trees, this.base.trees, false);
     this.handOver(this.treesLow, this.base.treesLow, false);
@@ -887,15 +920,24 @@ export class Scene {
    * Each of `tracked`, eased toward cut if the sight line says it is in the way and back if not, and swapped for its
    * low variant (a tree's knee-high clump, a house's capped walls' feet) as it passes halfway, and back again the same:
    * so a thing that grazes the line does not flicker, and nothing is ever drawn squashed. A step of nought (a paused
-   * frame) settles it at once. `hold` is how far past the way what is cut stays cut: `HOLD`, or nought for a still that
-   * must not depend on what came before it.
+   * frame) settles it at once. `hold` is how far past the way what is cut stays cut: `HOLD` (`HOLD_BUILT` for what is
+   * built), or nought for a still that must not depend on what came before it. `eases` is the frame's ease toward cut
+   * and toward grown back, by what is wanted.
    *
    * With `sinking` (the trees) the ease is drawn, and not only the swap: the tree is drawn whole at its ease's size,
    * about its foot, and its clump at what is left, so it sinks out of the way over a few frames and rises the same.
    * A tree shrinking whole is not a felled wood (`LOW` says why nothing is squashed): its height is never scaled alone.
    * A building shrunk whole would read wrong, so a building keeps the swap.
    */
-  private cutAway(tracked: Tracked, batch: KitBatch, low: KitBatch, dt: number, hold: number, sinking = false) {
+  private cutAway(
+    tracked: Tracked,
+    batch: KitBatch,
+    low: KitBatch,
+    dt: number,
+    hold: number,
+    eases: Float64Array,
+    sinking = false,
+  ) {
     for (let t = 0; t < tracked.count; t++) {
       const p = this.map.placements[tracked.of[t]];
       // what is cut down stays cut until it is clearly out of the way, and what stands is cut once it is in it
@@ -903,7 +945,7 @@ export class Scene {
       const was = tracked.size[t];
       if (was === want) continue;
       // cut at once, grown back slowly (GROW_RATE), the frame's two eases read from an array so neither is boxed
-      let now = dt > 0 ? was + (want - was) * this.eases[want] : want;
+      let now = dt > 0 ? was + (want - was) * eases[want] : want;
       if (Math.abs(now - want) < 0.02) now = want;
       tracked.size[t] = now;
       const down = now < 0.5 ? 1 : 0;
@@ -1173,6 +1215,17 @@ export class Scene {
    */
   cutTrees(out: Int32Array): number {
     const t = this.treesCut;
+    let n = 0;
+    for (let k = 0; k < t.count && n < out.length; k++) if (t.down[k]) out[n++] = t.of[k];
+    return n;
+  }
+
+  /**
+   * Which buildings are drawn cut down now, by placement, written into `out` (as many as fit); how many there are. For a
+   * test, which follows each wall from frame to frame.
+   */
+  cutHouses(out: Int32Array): number {
+    const t = this.housesCut;
     let n = 0;
     for (let k = 0; k < t.count && n < out.length; k++) if (t.down[k]) out[n++] = t.of[k];
     return n;
