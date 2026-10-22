@@ -6,16 +6,47 @@ things. Built on [artshape-render](https://github.com/onion2k/artshape-render),
 [artshape-sound](https://github.com/onion2k/artshape-sound), and started from
 the artshape game template on 2026-10-19.
 
-## How it is played
+## How to play
 
-A little six-wheeled rover in a landscape about 190 m across: a village
-round a cobbled square, a river with three fords, a lake and a marsh,
-ruins on the hills and in the woods, a windmill, standing stones, and five
-biomes (meadow, pine wood, autumn wood, heath, wetland). Drive with **W A S
-D** or the arrows (on a phone, the thumb stick), zoom with the wheel or a
-pinch, **M** to mute. Shallow water is crossed, deep water is not, and a
-bank too steep to climb always has a way round. Nothing is pictured yet:
-the camera and the album are next.
+You are a little six-wheeled rover with a camera on a mast, in a landscape
+about 190 m across: a village round a cobbled square, a river with three
+fords, a lake and a marsh, ruins on the hills and in the woods, a windmill,
+standing stones, and five biomes (meadow, pine wood, autumn wood, heath,
+wetland). A dozen things are about the place that should not be: rubber
+ducks on the ponds, garden gnomes, two UFOs. Find them and take their
+picture; the best picture of each goes in your album.
+
+**Driving.** `W A S D` or the arrows drive (on a phone, the thumb stick at
+the bottom left). Drag, or `Q` and `E`, look round the rover, and the view
+comes back behind you once you drive on; a tilt you set is kept. The wheel
+or a pinch zooms the chase camera in and out. Shallow water is crossed,
+slowly; deep water is a wall, and so is a bank too steep to climb, which
+always has a way round. `M` mutes.
+
+**Taking a picture.** `F`, or the camera button, raises the camera: the view
+is now through the lens on the mast. Drag to look about; the wheel or a
+pinch zooms the lens from 24 to 135 mm; anything worth a picture is
+bracketed, with its name, and the focus mark turns gold when it is sharp.
+The lens focuses by itself on what is in frame (`AF`); a click or a tap on
+an oddity focuses on that one by hand (`MF`), and `A`, or the `AF` button,
+goes back to auto. The readout beside the focal length says what distance
+the lens is on. `Space`, or the shutter button, takes the picture; the game
+stops while the camera is up. `F` or `Esc` lowers it.
+
+**The grade.** Each picture is marked out of a hundred and given up to three
+stars, from eight things: whether the subject is in frame and seen clear of
+the trees, how much of the frame it fills (a sixth to a half is best), where
+it sits (a third is better than the middle), whether it faces you, whether
+it is in focus, whether you were moving, and whether you shot into the sun.
+The card says what let the picture down. A picture graded above nought is
+kept in the album if it is the first of that thing or better than the one
+there.
+
+**The album.** `Tab`, or the book button, opens it over a paused game; the
+arrows, a swipe or the page buttons turn its pages, and `Tab` or `Esc`
+closes it and puts you back exactly where you were. A page is the picture
+drawn again from its numbers, so the album keeps a few hundred bytes a
+picture, in the browser's own storage with your mute and volume.
 
 ## What is here
 
@@ -27,13 +58,16 @@ the camera and the album are next.
     npm run perf           boot time, a frame's cost, a driven run's worst frame and the download, held to a budget and a baseline
     npm run map            the world from above, to reports/map.png
     npm run shots          every view, to reports/shots/
+    npm run cost           what a frame of five views costs, at a rung
+    npm run leaks          what the album and the tracks keep over long games, held to a ceiling
     npm run smoke          the real thing in headless Chromium on the GPU
     npm run look           what it looks like, held to a picture
     npm run mutate         the unit tests, held by the mutants they kill
     npm run check          all of it
 
-The template's leak watch and bench are not here yet: each comes back with
-the feature that gives it something to hold; `CLAUDE.md` says which.
+The template's bench is not here yet: it comes back with the first bodies
+in the physics world; `npm run leaks` watches what the album and the tracks
+keep over long games.
 
 `CLAUDE.md` says how a change is made, what each gate holds, and the edge
 cases a new thing has to meet. `/feature`, `/bug`, `/gate-moved` and
